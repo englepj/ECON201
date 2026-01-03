@@ -9,7 +9,6 @@ import pandas as pd
 import getpass
 import datetime
 
-
 # ----------------------------
 # Helpers
 # ----------------------------
@@ -236,7 +235,6 @@ def page_marginal_utility_demand():
     st.write("Enter how much utility (in dollars) you get from each additional unit.")
     st.write("We’ll plot total utility and your implied demand curve.")
 
-    # FIX: your defaults were 20 + (i-1)*4 which exceeds max=20 for i>1
     defaults = [20, 16, 12, 8, 4]
 
     mu = []
@@ -351,7 +349,6 @@ def page_ppf_rabbits_berries():
         st.plotly_chart(bar_fig, use_container_width=True)
 
     df_ppf = pd.DataFrame({"Good": ["Rabbits", "Berries"], "Output": [r_choice, b_choice]})
-    # FIX: prefix was wrong in your code
     export_csv_button("📥 Download CSV", df_ppf, "ppf_allocation")
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -412,60 +409,139 @@ def page_coordination_conflict():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 🛠️ Coordination / Conflict Games")
 
-    st.write("Choose to cooperate or not, and try to match your partner's choice. You win more when your choices align!")
+    st.write(
+        "Choose an action and see what happens against the computer. "
+        "Pick a game type to explore coordination vs conflict under different payoff structures."
+    )
 
-    st.markdown("### 📊 Payoff Matrix")
+    # ----------------------------
+    # Controls: choose game FIRST
+    # ----------------------------
+    game_type = st.radio(
+        "Choose game type:",
+        [
+            "Coordination (Positive Sum)",
+            "Coordination (Negative Sum)",
+            "Conflict (Zero Sum)",
+            "Conflict (Negative Sum)",
+            "Conflict (Positive Sum)",
+        ],
+        horizontal=True,
+    )
 
-    st.markdown("#### Positive Sum")
-    st.table(
-        {
+    user_choice = st.radio("Your Choice:", ["Cooperate", "Not Cooperate"], horizontal=True)
+
+    # ----------------------------
+    # Show ONLY the relevant payoff matrix
+    # ----------------------------
+    show_matrix = st.checkbox("📊 Show payoff matrix for this game", value=True)
+
+    payoff_tables = {
+        "Coordination (Positive Sum)": {
             "": ["Computer: Cooperate", "Computer: Not Cooperate"],
             "You: Cooperate": ["You +2 / Comp +3", "You 0 / Comp 0"],
             "You: Not Cooperate": ["You 0 / Comp 0", "You +2 / Comp +3"],
-        }
-    )
-
-    st.markdown("#### Negative Sum")
-    st.table(
-        {
+        },
+        "Coordination (Negative Sum)": {
             "": ["Computer: Cooperate", "Computer: Not Cooperate"],
             "You: Cooperate": ["You -1 / Comp -2", "You -3 / Comp -4"],
             "You: Not Cooperate": ["You -3 / Comp -4", "You -1 / Comp -2"],
-        }
-    )
+        },
+        "Conflict (Zero Sum)": {
+            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
+            "You: Cooperate": ["You +1 / Comp -1", "You -1 / Comp +1"],
+            "You: Not Cooperate": ["You -1 / Comp +1", "You +1 / Comp -1"],
+        },
+        "Conflict (Negative Sum)": {
+            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
+            "You: Cooperate": ["You -1 / Comp -2", "You -3 / Comp -4"],
+            "You: Not Cooperate": ["You -3 / Comp -4", "You -1 / Comp -2"],
+        },
+        "Conflict (Positive Sum)": {
+            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
+            "You: Cooperate": ["You +2 / Comp +2", "You +4 / Comp +1"],
+            "You: Not Cooperate": ["You +1 / Comp +4", "You +2 / Comp +2"],
+        },
+    }
 
-    game_type = st.radio("Choose game type:", ["Positive Sum", "Negative Sum"], horizontal=True)
-    user_choice = st.radio("Your Choice:", ["Cooperate", "Not Cooperate"], horizontal=True)
+    if show_matrix:
+        st.markdown("### 📊 Payoff Matrix (You / Computer)")
+        st.markdown(f"#### {game_type}")
+        st.table(payoff_tables[game_type])
 
+    # ----------------------------
+    # Session state
+    # ----------------------------
     st.session_state.setdefault("coord_user_total", 0)
     st.session_state.setdefault("coord_comp_total", 0)
     st.session_state.setdefault("coord_history", [])
 
+    # ----------------------------
+    # Play Round
+    # ----------------------------
     if st.button("Play Round"):
         comp_choice = random.choice(["Cooperate", "Not Cooperate"])
         st.write(f"🤖 Computer chose: **{comp_choice}**")
 
-        if game_type == "Positive Sum":
+        # ---- Payoff logic ----
+        if game_type == "Coordination (Positive Sum)":
             if user_choice == comp_choice:
                 user_score, comp_score = 2, 3
-                outcome = "You both did the same thing! Positive outcome for both!"
+                outcome = "✅ You coordinated! Both gain (positive-sum)."
             else:
                 user_score, comp_score = 0, 0
-                outcome = "You didn't match. No gain."
-        else:
+                outcome = "⚪ No coordination. No gains."
+
+        elif game_type == "Coordination (Negative Sum)":
             if user_choice == comp_choice:
                 user_score, comp_score = -1, -2
-                outcome = "You both did the same thing, but the environment is harsh. Both lose a little."
+                outcome = "😬 You coordinated, but the environment is harsh. Both lose a little."
             else:
                 user_score, comp_score = -3, -4
-                outcome = "You failed to coordinate in a negative-sum game. Bigger loss."
+                outcome = "💥 You failed to coordinate in a negative-sum environment. Bigger losses."
 
+        elif game_type == "Conflict (Zero Sum)":
+            # Consistent rule: if you match, you win; if mismatch, computer wins.
+            if user_choice == comp_choice:
+                user_score, comp_score = 1, -1
+                outcome = "🏆 You won this round (zero-sum)."
+            else:
+                user_score, comp_score = -1, 1
+                outcome = "🤖 Computer won this round (zero-sum)."
+
+        elif game_type == "Conflict (Negative Sum)":
+            # Same numerical structure as coordination-negative, but framed as conflict.
+            if user_choice == comp_choice:
+                user_score, comp_score = -1, -2
+                outcome = "😬 Even when you align, both lose (negative-sum conflict)."
+            else:
+                user_score, comp_score = -3, -4
+                outcome = "💥 Conflict + mismatch makes it worse. Bigger losses for both."
+
+        else:  # Conflict (Positive Sum)
+            # Everyone gains something, but mismatch determines who gains more.
+            if user_choice == comp_choice:
+                user_score, comp_score = 2, 2
+                outcome = "🤝 You matched — both gain evenly (positive-sum conflict)."
+            else:
+                if user_choice == "Cooperate" and comp_choice == "Not Cooperate":
+                    user_score, comp_score = 4, 1
+                    outcome = "😈 Conflict outcome: you gained more this time (still positive-sum overall)."
+                else:
+                    user_score, comp_score = 1, 4
+                    outcome = "😈 Conflict outcome: computer gained more this time (still positive-sum overall)."
+
+        # Update totals
         st.session_state.coord_user_total += user_score
         st.session_state.coord_comp_total += comp_score
 
+        # Record history
         st.session_state.coord_history.append(
             {
                 "Round": len(st.session_state.coord_history) + 1,
+                "Game Type": game_type,
+                "User Choice": user_choice,
+                "Computer Choice": comp_choice,
                 "User": user_score,
                 "Computer": comp_score,
                 "Total User": st.session_state.coord_user_total,
@@ -475,6 +551,9 @@ def page_coordination_conflict():
 
         st.info(outcome)
 
+    # ----------------------------
+    # Charts + Export
+    # ----------------------------
     if st.session_state.coord_history:
         history_df = pd.DataFrame(st.session_state.coord_history)
 
@@ -490,11 +569,16 @@ def page_coordination_conflict():
                     textposition="auto",
                 )
             )
-            cumulative_fig.update_layout(title="Cumulative Payoffs", yaxis_title="Total Points", xaxis_title="Player", template="simple_white")
+            cumulative_fig.update_layout(
+                title="Cumulative Payoffs",
+                yaxis_title="Total Points",
+                xaxis_title="Player",
+                template="simple_white",
+            )
             st.plotly_chart(cumulative_fig, use_container_width=True)
 
         with col2:
-            # FIX: Plotly/narwhals error path — pass Python lists, not pandas Series
+            # Pass Python lists (avoids occasional plotly/narwhals dtype issues)
             rounds = history_df["Round"].to_list()
             total_user = history_df["Total User"].to_list()
             total_comp = history_df["Total Computer"].to_list()
@@ -502,11 +586,19 @@ def page_coordination_conflict():
             line_fig = go.Figure()
             line_fig.add_trace(go.Scatter(x=rounds, y=total_user, mode="lines+markers", name="You", line=dict(color=cbc_gold)))
             line_fig.add_trace(go.Scatter(x=rounds, y=total_comp, mode="lines+markers", name="Computer", line=dict(color=cbc_blue)))
-            line_fig.update_layout(title="Payoff Over Time", xaxis_title="Round", yaxis_title="Cumulative Score", template="simple_white")
+            line_fig.update_layout(
+                title="Payoff Over Time",
+                xaxis_title="Round",
+                yaxis_title="Cumulative Score",
+                template="simple_white",
+            )
             st.plotly_chart(line_fig, use_container_width=True)
 
-        export_csv_button("📅 Download Round History", history_df, "coordination_history")
+        export_csv_button("📅 Download Round History", history_df, "coordination_conflict_history")
 
+    # ----------------------------
+    # Reset
+    # ----------------------------
     if st.button("🔄 Reset Scores"):
         st.session_state.coord_user_total = 0
         st.session_state.coord_comp_total = 0
@@ -532,8 +624,6 @@ def page_cost_curve_explorer():
     atc = total_costs / quantities
     avc = variable_cost_per_unit * np.ones_like(quantities)
     afc = fixed_cost / quantities
-
-    # MC: with linear VC this will be ~constant; leaving as-is
     mc = np.gradient(total_costs, quantities)
 
     col1, col2 = st.columns(2)
@@ -729,3 +819,4 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
