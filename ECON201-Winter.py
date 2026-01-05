@@ -454,8 +454,8 @@ def page_coordination_conflict():
         },
         "Conflict (Negative Sum)": {
             "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You -1 / Comp -2", "You -3 / Comp -4"],
-            "You: Not Cooperate": ["You -3 / Comp -4", "You -1 / Comp -2"],
+            "You: Cooperate": ["You -2 / Comp -2", "You -1 / Comp -4"],
+            "You: Not Cooperate": ["You -4 / Comp -1", "You -3 / Comp -3"],
         },
         "Conflict (Positive Sum)": {
             "": ["Computer: Cooperate", "Computer: Not Cooperate"],
@@ -510,13 +510,22 @@ def page_coordination_conflict():
                 outcome = "🤖 Computer won this round (zero-sum)."
 
         elif game_type == "Conflict (Negative Sum)":
-            # Same numerical structure as coordination-negative, but framed as conflict.
-            if user_choice == comp_choice:
-                user_score, comp_score = -1, -2
-                outcome = "😬 Even when you align, both lose (negative-sum conflict)."
-            else:
-                user_score, comp_score = -3, -4
-                outcome = "💥 Conflict + mismatch makes it worse. Bigger losses for both."
+            # Conflict (Negative Sum) — Dominant strategy = Not Cooperate
+            if user_choice == "Cooperate" and comp_choice == "Cooperate":
+                user_score, comp_score = -2, -2
+                outcome = "😬 You both try to cooperate, but the structure of the conflict still hurts everyone."
+
+            elif user_choice == "Not Cooperate" and comp_choice == "Cooperate":
+                user_score, comp_score = -1, -4
+                outcome = "⚔️ You protect yourself while the other side cooperates — you lose less, they lose more."
+
+            elif user_choice == "Cooperate" and comp_choice == "Not Cooperate":
+                user_score, comp_score = -4, -1
+                outcome = "⚔️ You cooperate while the other side defects — you take the bigger hit."
+
+    else:  # Both Not Cooperate
+        user_score, comp_score = -3, -3
+        outcome = "💥 Mutual defection: both sides act defensively and both lose. (Nash equilibrium)"
 
         else:  # Conflict (Positive Sum)
             # Everyone gains something, but mismatch determines who gains more.
@@ -819,4 +828,5 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
