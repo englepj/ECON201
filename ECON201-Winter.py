@@ -523,9 +523,9 @@ def page_coordination_conflict():
                 user_score, comp_score = -4, -1
                 outcome = "⚔️ You cooperate while the other side defects — you take the bigger hit."
 
-    else:  # Both Not Cooperate
-        user_score, comp_score = -3, -3
-        outcome = "💥 Mutual defection: both sides act defensively and both lose. (Nash equilibrium)"
+            else:  # Both Not Cooperate
+                user_score, comp_score = -3, -3
+                outcome = "💥 Mutual defection: both sides act defensively and both lose. (Nash equilibrium)"
 
         else:  # Conflict (Positive Sum)
             # Everyone gains something, but mismatch determines who gains more.
@@ -828,5 +828,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
