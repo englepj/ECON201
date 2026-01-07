@@ -438,29 +438,29 @@ def page_coordination_conflict():
 
     payoff_tables = {
         "Coordination (Positive Sum)": {
-            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You +2 / Comp +3", "You 0 / Comp 0"],
-            "You: Not Cooperate": ["You 0 / Comp 0", "You +2 / Comp +3"],
+            "": ["You: Cooperate", "You: Not Cooperate"],
+            "Computer: Cooperate": ["You +2 / Comp +3", "You 0 / Comp 0"],
+            "Computer: Not Cooperate": ["You 0 / Comp 0", "You +2 / Comp +3"],
         },
         "Coordination (Negative Sum)": {
-            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You -1 / Comp -2", "You -3 / Comp -4"],
-            "You: Not Cooperate": ["You -3 / Comp -4", "You -1 / Comp -2"],
+            "": ["You: Cooperate", "You: Not Cooperate"],
+            "Computer: Cooperate": ["You -1 / Comp -2", "You -3 / Comp -4"],
+            "Computer: Not Cooperate": ["You -3 / Comp -4", "You -1 / Comp -2"],
         },
         "Conflict (Zero Sum)": {
-            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You +1 / Comp -1", "You -1 / Comp +1"],
-            "You: Not Cooperate": ["You -1 / Comp +1", "You +1 / Comp -1"],
+            "": ["You: Cooperate", "You: Not Cooperate"],
+            "Computer: Cooperate": ["You +1 / Comp -1", "You -1 / Comp +1"],
+            "Computer: Not Cooperate": ["You -1 / Comp +1", "You +1 / Comp -1"],
         },
         "Conflict (Negative Sum)": {
-            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You -2 / Comp -2", "You -1 / Comp -4"],
-            "You: Not Cooperate": ["You -4 / Comp -1", "You -3 / Comp -3"],
+            "": ["You: Cooperate", "You: Not Cooperate"],
+            "Computer: Cooperate": ["You -2 / Comp -2", "You -1 / Comp -4"],
+            "Computer: Not Cooperate": ["You -4 / Comp -1", "You -3 / Comp -3"],
         },
         "Conflict (Positive Sum)": {
-            "": ["Computer: Cooperate", "Computer: Not Cooperate"],
-            "You: Cooperate": ["You +2 / Comp +2", "You +4 / Comp +1"],
-            "You: Not Cooperate": ["You +1 / Comp +4", "You +2 / Comp +2"],
+            "": ["You: Cooperate", "You: Not Cooperate"],
+            "Computer: Cooperate": ["You +2 / Comp +2", "You +4 / Comp +1"],
+            "Computer: Not Cooperate": ["You +1 / Comp +4", "You +2 / Comp +2"],
         },
     }
 
@@ -828,6 +828,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
