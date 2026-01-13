@@ -368,25 +368,25 @@ def page_marginal_utility_demand():
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-with col3:
-    fig3 = go.Figure()
-    fig3.add_trace(
-        go.Scatter(
-            x=market_q_desc,
-            y=market_prices_desc,
-            mode="lines+markers",
-            name="Market Demand (Step)",
-            line=dict(color=cbc_darkorange, shape="hv"),  # <-- stair-step
+    with col3:
+        fig3 = go.Figure()
+        fig3.add_trace(
+            go.Scatter(
+                x=market_q_desc,
+                y=market_prices_desc,
+                mode="lines+markers",
+                name="Market Demand (Step)",
+                line=dict(color=cbc_darkorange, shape="hv"),  # <-- stair-step
+            )
         )
-    )
-    fig3.update_layout(
-        title="Market Demand Curve (After Submissions)",
-        xaxis_title="Total Quantity Demanded (Market)",
-        yaxis_title="Price ($)",
-        template="simple_white",
-        yaxis=dict(range=[0, 21]),
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+        fig3.update_layout(
+            title="Market Demand Curve (After Submissions)",
+            xaxis_title="Total Quantity Demanded (Market)",
+            yaxis_title="Price ($)",
+            template="simple_white",
+            yaxis=dict(range=[0, 21]),
+        )
+        st.plotly_chart(fig3, use_container_width=True)
 
     # ----------------------------
     # Tables + Export
@@ -957,6 +957,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
