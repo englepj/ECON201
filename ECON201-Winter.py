@@ -230,22 +230,103 @@ def page_fixed_variable_cost():
 
 def page_marginal_utility_demand():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-    st.markdown("## 📈 Marginal Utility ($) & Your Demand Curve")
+    st.markdown("## 📈 Marginal Utility ($) & Demand (Individual → Market)")
 
-    st.write("Enter how much utility (in dollars) you get from each additional unit.")
-    st.write("We’ll plot total utility and your implied demand curve.")
+    st.write(
+        "Each click generates a **new consumer** with 5 marginal utilities (MU1..MU5) randomly drawn between $1 and $20, "
+        "but **decreasing** as quantity increases. Click **Submit and Add** to add that consumer into the market."
+    )
 
-    defaults = [20, 16, 12, 8, 4]
+    # ----------------------------
+    # Helpers
+    # ----------------------------
+    def generate_decreasing_mus(n=5, low=1, high=20):
+        """Random MU values between low..high, sorted to be non-increasing MU1..MUn."""
+        vals = [random.randint(low, high) for _ in range(n)]
+        vals.sort(reverse=True)
+        return vals
 
-    mu = []
-    for i in range(1, 6):
-        mu.append(st.slider(f"Marginal Utility of Item {i}", 0, 20, defaults[i - 1]))
+    def demand_from_mu(mu_list):
+        """
+        Convert MU list (WTP per unit) into an individual demand schedule:
+        At price p, quantity demanded = count of MU >= p.
+        """
+        prices = list(range(20, 0, -1))  # 20 down to 1
+        qd = [sum(1 for u in mu_list if u >= p) for p in prices]
+        return prices, qd
 
-    total_utility = np.cumsum(mu)
-    prices = mu
+    # ----------------------------
+    # Session state (market accumulation)
+    # ----------------------------
+    st.session_state.setdefault("mu_current", generate_decreasing_mus())
+    st.session_state.setdefault("market_by_price", {p: 0 for p in range(1, 21)})  # 1..20
+    st.session_state.setdefault("market_submissions", [])  # store each consumer's MU list
+
+    # ----------------------------
+    # Buttons ABOVE graphs
+    # ----------------------------
+    colA, colB, colC = st.columns([1.2, 1.2, 2.6])
+
+    with colA:
+        if st.button("🎲 New Random Utilities"):
+            st.session_state.mu_current = generate_decreasing_mus()
+            st.toast("New randomized MU values generated.", icon="🎲")
+
+    with colB:
+        if st.button("✅ Submit and Add"):
+            mu_list = st.session_state.mu_current
+            prices_desc, qd = demand_from_mu(mu_list)
+
+            # Add this consumer into the market (horizontal sum)
+            # prices_desc is 20..1; market_by_price stored 1..20
+            for p, q in zip(prices_desc, qd):
+                st.session_state.market_by_price[p] += q
+
+            st.session_state.market_submissions.append(
+                {
+                    "Submission": len(st.session_state.market_submissions) + 1,
+                    "MU1": mu_list[0],
+                    "MU2": mu_list[1],
+                    "MU3": mu_list[2],
+                    "MU4": mu_list[3],
+                    "MU5": mu_list[4],
+                }
+            )
+
+            # After submit, auto-generate next consumer so repeated clicking feels like a "class market"
+            st.session_state.mu_current = generate_decreasing_mus()
+            st.success("Added one consumer to the market demand curve.")
+
+    with colC:
+        if st.button("🔄 Reset Market"):
+            st.session_state.market_by_price = {p: 0 for p in range(1, 21)}
+            st.session_state.market_submissions = []
+            st.session_state.mu_current = generate_decreasing_mus()
+            st.warning("Market reset (all submissions cleared).")
+
+    st.divider()
+
+    # ----------------------------
+    # Current consumer MU (display)
+    # ----------------------------
+    mu = st.session_state.mu_current
     quantities = np.arange(1, 6)
+    total_utility = np.cumsum(mu)
 
-    col1, col2 = st.columns(2)
+    # For "your demand curve" we’ll plot MU vs Q (step-ish WTP by unit)
+    individual_prices = mu
+
+    # ----------------------------
+    # Market demand curve from accumulated submissions
+    # ----------------------------
+    # Build market schedule at prices 20..1
+    market_prices_desc = list(range(20, 0, -1))
+    market_q_desc = [st.session_state.market_by_price[p] for p in market_prices_desc]
+
+    # ----------------------------
+    # Graphs
+    # ----------------------------
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         fig1 = go.Figure()
@@ -256,12 +337,13 @@ def page_marginal_utility_demand():
                 marker_color=cbc_gold,
                 text=total_utility,
                 textposition="auto",
+                name="Total Utility",
             )
         )
         fig1.update_layout(
-            title="Total Utility by Quantity",
+            title="Current Consumer: Total Utility by Quantity",
             xaxis_title="Quantity Consumed",
-            yaxis_title="Total Utility",
+            yaxis_title="Total Utility ($)",
             template="simple_white",
         )
         st.plotly_chart(fig1, use_container_width=True)
@@ -271,24 +353,71 @@ def page_marginal_utility_demand():
         fig2.add_trace(
             go.Scatter(
                 x=quantities,
-                y=prices,
+                y=individual_prices,
                 mode="lines+markers",
-                name="Demand Curve",
+                name="Individual Demand (MU)",
                 line=dict(color=cbc_blue),
             )
         )
         fig2.update_layout(
-            title="Your Demand Curve",
+            title="Current Consumer: Demand Curve (WTP per Unit)",
             xaxis_title="Quantity",
             yaxis_title="Willingness to Pay ($)",
             template="simple_white",
+            yaxis=dict(range=[0, 21]),
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-    df = pd.DataFrame(
-        {"Quantity": quantities, "Marginal Utility": mu, "Total Utility": total_utility, "Willingness to Pay": prices}
+with col3:
+    fig3 = go.Figure()
+    fig3.add_trace(
+        go.Scatter(
+            x=market_q_desc,
+            y=market_prices_desc,
+            mode="lines+markers",
+            name="Market Demand (Step)",
+            line=dict(color=cbc_darkorange, shape="hv"),  # <-- stair-step
+        )
     )
-    export_csv_button("📥 Download CSV", df, "utility_demand")
+    fig3.update_layout(
+        title="Market Demand Curve (After Submissions)",
+        xaxis_title="Total Quantity Demanded (Market)",
+        yaxis_title="Price ($)",
+        template="simple_white",
+        yaxis=dict(range=[0, 21]),
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+    # ----------------------------
+    # Tables + Export
+    # ----------------------------
+    st.markdown("### 📋 Current Consumer Utility Table")
+    df_current = pd.DataFrame(
+        {
+            "Quantity": quantities,
+            "Marginal Utility (MU)": mu,
+            "Total Utility": total_utility,
+            "WTP ($)": individual_prices,
+        }
+    )
+    st.dataframe(df_current, use_container_width=True)
+    export_csv_button("📥 Download Current Consumer CSV", df_current, "utility_demand_current")
+
+    st.markdown("### 🧑‍🤝‍🧑 Market Submissions (Each Click = One Consumer)")
+    if st.session_state.market_submissions:
+        df_subs = pd.DataFrame(st.session_state.market_submissions)
+        st.dataframe(df_subs, use_container_width=True)
+        export_csv_button("📥 Download Submissions CSV", df_subs, "utility_demand_submissions")
+
+        st.markdown("### 🏪 Market Demand Schedule (Price → Quantity)")
+        df_market = pd.DataFrame(
+            {"Price ($)": market_prices_desc, "Market Quantity Demanded": market_q_desc}
+        )
+        st.dataframe(df_market, use_container_width=True)
+        export_csv_button("📥 Download Market Demand CSV", df_market, "market_demand_schedule")
+    else:
+        st.info("No submissions yet. Click **Submit and Add** to start building the market demand curve.")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -828,6 +957,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
