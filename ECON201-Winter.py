@@ -504,8 +504,7 @@ def page_marginal_utility_demand():
     st.divider()
 
     # ----------------------------
-    # Sliders (5) for student input
-    # Keep them non-increasing by constraining each next slider's max
+    # Sliders (5) for student input (safe when bounds hit 0)
     # ----------------------------
     st.markdown("### 🎚️ Set Marginal Utilities (Student Input)")
 
@@ -516,20 +515,34 @@ def page_marginal_utility_demand():
     st.session_state.setdefault("mu4", st.session_state.mu_current[3])
     st.session_state.setdefault("mu5", st.session_state.mu_current[4])
 
-    s1, s2, s3, s4, s5 = st.columns(5)
+    def bounded_slider(label: str, upper: int, key: str, current: int) -> int:
+        """
+        Streamlit sliders cannot have min==max (e.g., 0..0).
+        If upper==0, show a disabled 0..1 slider and force value to 0.
+        """
+        if upper <= 0:
+            st.slider(label, 0, 1, 0, key=key, disabled=True)
+            return 0
+        return st.slider(label, 0, int(upper), int(min(current, upper)), key=key)
 
-    with s1:
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    with c1:
         mu1 = st.slider("MU1", 0, 20, int(st.session_state["mu1"]), key="mu1")
-    with s2:
-        mu2 = st.slider("MU2", 0, int(mu1), int(min(st.session_state["mu2"], mu1)), key="mu2")
-    with s3:
-        mu3 = st.slider("MU3", 0, int(mu2), int(min(st.session_state["mu3"], mu2)), key="mu3")
-    with s4:
-        mu4 = st.slider("MU4", 0, int(mu3), int(min(st.session_state["mu4"], mu3)), key="mu4")
-    with s5:
-        mu5 = st.slider("MU5", 0, int(mu4), int(min(st.session_state["mu5"], mu4)), key="mu5")
 
-    # Update current MU list from sliders (always non-increasing by construction)
+    with c2:
+        mu2 = bounded_slider("MU2", int(mu1), "mu2", int(st.session_state["mu2"]))
+
+    with c3:
+        mu3 = bounded_slider("MU3", int(mu2), "mu3", int(st.session_state["mu3"]))
+
+    with c4:
+        mu4 = bounded_slider("MU4", int(mu3), "mu4", int(st.session_state["mu4"]))
+
+    with c5:
+        mu5 = bounded_slider("MU5", int(mu4), "mu5", int(st.session_state["mu5"]))
+
+    # Update current MU list from sliders (always non-increasing)
     st.session_state.mu_current = [mu1, mu2, mu3, mu4, mu5]
 
     st.divider()
@@ -1183,6 +1196,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
