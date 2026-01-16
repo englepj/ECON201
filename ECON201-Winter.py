@@ -413,14 +413,16 @@ def page_marginal_utility_demand():
     st.markdown("## 📈 Marginal Utility ($) & Demand (Individual → Market)")
 
     st.write(
-        "Each click generates a **new consumer** with 5 marginal utilities (MU1..MU5) randomly drawn between $1 and $20, "
-        "but **decreasing** as quantity increases. Click **Submit and Add** to add that consumer into the market."
+        "Use the **sliders** to set a consumer’s 5 marginal utilities (MU1..MU5). "
+        "Or click **New Random Utilities** to generate a new consumer (values can be **0 to 20**, "
+        "and are **non-increasing** as quantity rises). "
+        "Click **Submit and Add** to add that consumer into the market."
     )
 
     # ----------------------------
     # Helpers
     # ----------------------------
-    def generate_decreasing_mus(n=5, low=1, high=20):
+    def generate_decreasing_mus(n=5, low=0, high=20):
         """Random MU values between low..high, sorted to be non-increasing MU1..MUn."""
         vals = [random.randint(low, high) for _ in range(n)]
         vals.sort(reverse=True)
@@ -431,15 +433,15 @@ def page_marginal_utility_demand():
         Convert MU list (WTP per unit) into an individual demand schedule:
         At price p, quantity demanded = count of MU >= p.
         """
-        prices = list(range(20, 0, -1))  # 20 down to 1
+        prices = list(range(20, -1, -1))  # 20 down to 0
         qd = [sum(1 for u in mu_list if u >= p) for p in prices]
         return prices, qd
 
     # ----------------------------
     # Session state (market accumulation)
     # ----------------------------
-    st.session_state.setdefault("mu_current", generate_decreasing_mus())
-    st.session_state.setdefault("market_by_price", {p: 0 for p in range(1, 21)})  # 1..20
+    st.session_state.setdefault("mu_current", generate_decreasing_mus())  # now allows zeros
+    st.session_state.setdefault("market_by_price", {p: 0 for p in range(0, 21)})  # 0..20
     st.session_state.setdefault("market_submissions", [])  # store each consumer's MU list
 
     # ----------------------------
@@ -449,7 +451,13 @@ def page_marginal_utility_demand():
 
     with colA:
         if st.button("🎲 New Random Utilities"):
-            st.session_state.mu_current = generate_decreasing_mus()
+            st.session_state.mu_current = generate_decreasing_mus(low=0, high=20)
+            # keep slider defaults in sync
+            st.session_state["mu1"] = st.session_state.mu_current[0]
+            st.session_state["mu2"] = st.session_state.mu_current[1]
+            st.session_state["mu3"] = st.session_state.mu_current[2]
+            st.session_state["mu4"] = st.session_state.mu_current[3]
+            st.session_state["mu5"] = st.session_state.mu_current[4]
             st.toast("New randomized MU values generated.", icon="🎲")
 
     with colB:
@@ -458,7 +466,6 @@ def page_marginal_utility_demand():
             prices_desc, qd = demand_from_mu(mu_list)
 
             # Add this consumer into the market (horizontal sum)
-            # prices_desc is 20..1; market_by_price stored 1..20
             for p, q in zip(prices_desc, qd):
                 st.session_state.market_by_price[p] += q
 
@@ -473,16 +480,57 @@ def page_marginal_utility_demand():
                 }
             )
 
-            # After submit, auto-generate next consumer so repeated clicking feels like a "class market"
-            st.session_state.mu_current = generate_decreasing_mus()
+            # After submit, auto-generate next consumer
+            st.session_state.mu_current = generate_decreasing_mus(low=0, high=20)
+            st.session_state["mu1"] = st.session_state.mu_current[0]
+            st.session_state["mu2"] = st.session_state.mu_current[1]
+            st.session_state["mu3"] = st.session_state.mu_current[2]
+            st.session_state["mu4"] = st.session_state.mu_current[3]
+            st.session_state["mu5"] = st.session_state.mu_current[4]
             st.success("Added one consumer to the market demand curve.")
 
     with colC:
         if st.button("🔄 Reset Market"):
-            st.session_state.market_by_price = {p: 0 for p in range(1, 21)}
+            st.session_state.market_by_price = {p: 0 for p in range(0, 21)}
             st.session_state.market_submissions = []
-            st.session_state.mu_current = generate_decreasing_mus()
+            st.session_state.mu_current = generate_decreasing_mus(low=0, high=20)
+            st.session_state["mu1"] = st.session_state.mu_current[0]
+            st.session_state["mu2"] = st.session_state.mu_current[1]
+            st.session_state["mu3"] = st.session_state.mu_current[2]
+            st.session_state["mu4"] = st.session_state.mu_current[3]
+            st.session_state["mu5"] = st.session_state.mu_current[4]
             st.warning("Market reset (all submissions cleared).")
+
+    st.divider()
+
+    # ----------------------------
+    # Sliders (5) for student input
+    # Keep them non-increasing by constraining each next slider's max
+    # ----------------------------
+    st.markdown("### 🎚️ Set Marginal Utilities (Student Input)")
+
+    # Initialize slider keys from current MU once
+    st.session_state.setdefault("mu1", st.session_state.mu_current[0])
+    st.session_state.setdefault("mu2", st.session_state.mu_current[1])
+    st.session_state.setdefault("mu3", st.session_state.mu_current[2])
+    st.session_state.setdefault("mu4", st.session_state.mu_current[3])
+    st.session_state.setdefault("mu5", st.session_state.mu_current[4])
+
+    s1, s2, s3, s4, s5 = st.columns(5)
+
+    with s1:
+        mu1 = st.slider("MU1", 0, 20, int(st.session_state["mu1"]), key="mu1")
+    with s2:
+        mu2 = st.slider("MU2", 0, int(mu1), int(min(st.session_state["mu2"], mu1)), key="mu2")
+    with s3:
+        mu3 = st.slider("MU3", 0, int(mu2), int(min(st.session_state["mu3"], mu2)), key="mu3")
+    with s4:
+        mu4 = st.slider("MU4", 0, int(mu3), int(min(st.session_state["mu4"], mu3)), key="mu4")
+    with s5:
+        mu5 = st.slider("MU5", 0, int(mu4), int(min(st.session_state["mu5"], mu4)), key="mu5")
+
+    # Update current MU list from sliders (always non-increasing by construction)
+    st.session_state.mu_current = [mu1, mu2, mu3, mu4, mu5]
 
     st.divider()
 
@@ -492,15 +540,12 @@ def page_marginal_utility_demand():
     mu = st.session_state.mu_current
     quantities = np.arange(1, 6)
     total_utility = np.cumsum(mu)
-
-    # For "your demand curve" we’ll plot MU vs Q (step-ish WTP by unit)
-    individual_prices = mu
+    individual_prices = mu  # WTP per unit
 
     # ----------------------------
     # Market demand curve from accumulated submissions
     # ----------------------------
-    # Build market schedule at prices 20..1
-    market_prices_desc = list(range(20, 0, -1))
+    market_prices_desc = list(range(20, -1, -1))  # 20..0
     market_q_desc = [st.session_state.market_by_price[p] for p in market_prices_desc]
 
     # ----------------------------
@@ -556,7 +601,7 @@ def page_marginal_utility_demand():
                 y=market_prices_desc,
                 mode="lines+markers",
                 name="Market Demand (Step)",
-                line=dict(color=cbc_darkorange, shape="hv"),  # <-- stair-step
+                line=dict(color=cbc_darkorange, shape="hv"),  # stair-step
             )
         )
         fig3.update_layout(
@@ -1138,6 +1183,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
