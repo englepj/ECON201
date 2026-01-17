@@ -1135,6 +1135,9 @@ def page_cost_curve_explorer():
     # ----------------------------
     # Plot 2: AFC/AVC/MC with price line + dashed lines + revenue/profit/loss shading
     # ----------------------------
+
+    
+    
     cost_curves_fig = go.Figure()
     cost_curves_fig.add_trace(go.Scatter(x=q, y=afc, mode="lines+markers", name="AFC", line=dict(color=cbc_lightblue)))
     cost_curves_fig.add_trace(go.Scatter(x=q, y=avc, mode="lines+markers", name="AVC", line=dict(color=cbc_orange)))
@@ -1210,6 +1213,19 @@ def page_cost_curve_explorer():
                 )
 
         cost_curves_fig.update_layout(shapes=shapes)
+
+        ymax_unit = max(
+            np.nanmax(mc),
+            np.nanmax(avc),
+            np.nanmax(afc),
+            price
+        ) * 1.2
+
+cost_curves_fig.update_layout(
+    yaxis=dict(
+        range=[0, ymax_unit]
+    )
+)
 
         # Add a little text summary
         st.write(
@@ -1417,6 +1433,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
