@@ -1241,7 +1241,7 @@ def page_cost_curve_explorer():
         xaxis_title="Quantity (burgers per week)",
         yaxis_title="Cost ($ per burger)",
         template="simple_white",
-        yaxis=dict(range=[0, None]),
+        yaxis=dict(range=[0, 10]),
     )
 
     # ----------------------------
@@ -1428,6 +1428,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
