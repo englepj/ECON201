@@ -1221,11 +1221,11 @@ def page_cost_curve_explorer():
             price
         ) * 1.2
 
-cost_curves_fig.update_layout(
-    yaxis=dict(
-        range=[0, ymax_unit]
-    )
-)
+        cost_curves_fig.update_layout(
+            yaxis=dict(
+                range=[0, ymax_unit]
+            )
+        )
 
         # Add a little text summary
         st.write(
@@ -1433,6 +1433,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
