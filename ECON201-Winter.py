@@ -1214,12 +1214,7 @@ def page_cost_curve_explorer():
 
         cost_curves_fig.update_layout(shapes=shapes)
 
-        ymax_unit = max(
-            np.nanmax(mc),
-            np.nanmax(avc),
-            np.nanmax(afc),
-            price
-        ) * 1.2
+        ymax_unit =  10
 
         cost_curves_fig.update_layout(
             yaxis=dict(
@@ -1433,6 +1428,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
