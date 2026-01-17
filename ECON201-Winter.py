@@ -1120,47 +1120,12 @@ def page_cost_curve_explorer():
     # ----------------------------
     # Plot 1: Total/Fixed/Variable cost (levels)
     # ----------------------------
-    cost_curves_fig = go.Figure()
+    cost_levels_fig = go.Figure()
+    cost_levels_fig.add_trace(go.Scatter(x=q, y=tc, mode="lines+markers", name="Total Cost (TC)", line=dict(color=cbc_blue)))
+    cost_levels_fig.add_trace(go.Scatter(x=q, y=fc, mode="lines+markers", name="Fixed Cost (FC)", line=dict(color=cbc_lightblue)))
+    cost_levels_fig.add_trace(go.Scatter(x=q, y=vc, mode="lines+markers", name="Variable Cost (VC)", line=dict(color=cbc_orange)))
 
-    cost_curves_fig.add_trace(
-        go.Scatter(
-            x=q,
-            y=afc,
-            mode="lines",
-            name="AFC",
-            line=dict(color=cbc_lightblue, dash="dot")
-        )
-    )
 
-    cost_curves_fig.add_trace(
-        go.Scatter(
-            x=q,
-            y=avc,
-            mode="lines",
-            name="AVC",
-            line=dict(color=cbc_orange)
-        )
-    )
-
-    cost_curves_fig.add_trace(
-        go.Scatter(
-            x=q,
-            y=atc,
-            mode="lines",
-            name="ATC",
-            line=dict(color="black", width=3)
-        )
-    )
-
-    cost_curves_fig.add_trace(
-        go.Scatter(
-            x=q,
-            y=mc,
-            mode="lines",
-            name="MC",
-            line=dict(color=cbc_gold)
-        )
-    )
 
 
     cost_levels_fig.update_layout(
@@ -1174,12 +1139,12 @@ def page_cost_curve_explorer():
     # Plot 2: AFC/AVC/MC with price line + dashed lines + revenue/profit/loss shading
     # ----------------------------
 
-    
-    
     cost_curves_fig = go.Figure()
-    cost_curves_fig.add_trace(go.Scatter(x=q, y=afc, mode="lines+markers", name="AFC", line=dict(color=cbc_lightblue)))
-    cost_curves_fig.add_trace(go.Scatter(x=q, y=avc, mode="lines+markers", name="AVC", line=dict(color=cbc_orange)))
-    cost_curves_fig.add_trace(go.Scatter(x=q, y=mc, mode="lines+markers", name="MC", line=dict(color=cbc_gold)))
+    cost_curves_fig.add_trace(go.Scatter(x=q, y=afc, mode="lines", name="AFC", line=dict(color=cbc_lightblue, dash="dot")))
+    cost_curves_fig.add_trace(go.Scatter(x=q, y=avc, mode="lines", name="AVC", line=dict(color=cbc_orange)))
+    cost_curves_fig.add_trace(go.Scatter(x=q, y=atc, mode="lines", name="ATC", line=dict(color="black", width=3)))
+    cost_curves_fig.add_trace(go.Scatter(x=q, y=mc, mode="lines", name="MC", line=dict(color=cbc_gold)))
+
 
     # Price line (dashed)
     cost_curves_fig.add_hline(
