@@ -1053,11 +1053,18 @@ def page_cost_curve_explorer():
     # MP per additional employee (burgers/week) is a simple quadratic:
     # MP(L) = base + gain*L - decay*L^2, clipped at >= 0
     # This yields increasing MP early, then diminishing MP, then near-zero.
-    a = 10
+    L_star = 10      # MC minimum occurs at this employee count
+    b = 3.0
+    c = -b / (3 * L_star)
+    a = (1000 / L_star) - (2/3) * b * L_star
+
     employees = np.arange(1, max_employees + 1)
-    
-    mp = (300 * employees) / (employees + a)
-    mp = np.clip(mp, 0, None)
+
+
+
+
+    # Marginal product
+    mp = a + 2*b*employees + 3*c*employees**2
 
     # Total product (burgers/week) with L employees: cumulative sum of marginal products
     q = np.cumsum(mp)
@@ -1429,6 +1436,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
