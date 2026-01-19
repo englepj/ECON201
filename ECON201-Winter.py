@@ -1055,8 +1055,8 @@ def page_cost_curve_explorer():
     # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
     # Tune these three:
     A = 180.0      # baseline MP
-    B = 28.0       # early gains from specialization
-    D = 1.5        # diminishing returns strength (bigger => earlier/faster drop)
+    B = 50.0       # early gains from specialization
+    D = 2.5        # diminishing returns strength (bigger => earlier/faster drop)
 
     mp = A + B*employees - D*(employees**2)
 
@@ -1447,6 +1447,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
