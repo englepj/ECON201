@@ -1056,7 +1056,7 @@ def page_cost_curve_explorer():
     # Tune these three:
     A = 120.0
     B = 30.0
-    D = 0.2
+    D = 0.7
 
     mp = A + B*employees - D*(employees**2)
 
@@ -1448,6 +1448,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
