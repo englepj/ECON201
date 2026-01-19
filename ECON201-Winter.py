@@ -1053,9 +1053,9 @@ def page_cost_curve_explorer():
     # MP per additional employee (burgers/week) is a simple quadratic:
     # MP(L) = base + gain*L - decay*L^2, clipped at >= 0
     # This yields increasing MP early, then diminishing MP, then near-zero.
-    a = 6.5                # starting MP
-    b = -0.007            # decreasing returns (negative)
-    c = 0.0009            # congestion / capacity (positive, causes sharp rise)
+    a = 6.5
+    b = -0.007
+    c = 0.0003333333333333333
 
     employees = np.arange(1, max_employees + 1)
 
@@ -1432,6 +1432,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
