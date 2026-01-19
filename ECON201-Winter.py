@@ -1058,7 +1058,7 @@ def page_cost_curve_explorer():
     #decay = gain / 15
 
     employees = np.arange(1, max_employees + 1)
-    mp = base_mp*(1 - 2.71828**(gain*employees)
+    mp = base_mp*(1 - 2.71828**(gain*employees))
     mp = np.clip(mp, 0, None)
 
     # Total product (burgers/week) with L employees: cumulative sum of marginal products
@@ -1431,6 +1431,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
