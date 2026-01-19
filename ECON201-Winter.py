@@ -1054,7 +1054,7 @@ def page_cost_curve_explorer():
 
     # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
     # Tune these three:
-    A = 120.0
+    A = 200.0
     B = 30.0
     D = 0.7
 
@@ -1448,6 +1448,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
