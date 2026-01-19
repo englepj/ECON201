@@ -1065,7 +1065,14 @@ def page_cost_curve_explorer():
     #TP = a*employees + b*employees**2 + c*employees**3 + d*employees**4
     mp = a + 2*b*employees + 3*c*employees**2 + 4*d*employees**3
     
-    np.clip(mp, 1e-6, None)
+    # --- Compute MC normally ---
+    MC_raw = wage / np.clip(mp, 1e-6, None)
+
+    # --- Clip so MC decreases up to the minimum, then never decreases after ---
+    min_idx = int(np.argmin(MC_raw))
+
+    MC = MC_raw.copy()
+    MC[min_idx:] = np.maximum.accumulate(MC_raw[min_idx:])
    
 
     # Total product (burgers/week) with L employees: cumulative sum of marginal products
@@ -1438,6 +1445,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
