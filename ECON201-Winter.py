@@ -1055,7 +1055,7 @@ def page_cost_curve_explorer():
     # This yields increasing MP early, then diminishing MP, then near-zero.
     L_star = 10
     b = 4
-    d = -0.02
+    d = -0.05
 
     c = -(b + 6*d*(L_star**2)) / (3*L_star)
     a = (1000 - b*(L_star**2) - c*(L_star**3) - d*(L_star**4)) / L_star
@@ -1445,6 +1445,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
