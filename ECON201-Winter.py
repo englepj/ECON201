@@ -1057,7 +1057,7 @@ def page_cost_curve_explorer():
 
     # Define function
     
-    mp = 300 * employee / (employee + a)
+    mp = 300 * employees / (employees + a)
     mp = np.clip(mp, 0, None)
 
     # Total product (burgers/week) with L employees: cumulative sum of marginal products
@@ -1430,6 +1430,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
