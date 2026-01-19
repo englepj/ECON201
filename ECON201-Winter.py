@@ -1055,7 +1055,7 @@ def page_cost_curve_explorer():
     # This yields increasing MP early, then diminishing MP, then near-zero.
     base_mp = 120.0
     gain = 50.0
-    decay = 2.5
+    decay = 10.5
 
     employees = np.arange(1, max_employees + 1)
     mp = base_mp + gain * employees - decay * (employees ** 2)
@@ -1431,6 +1431,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
