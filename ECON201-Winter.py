@@ -1048,56 +1048,58 @@ def page_cost_curve_explorer():
         st.caption("WA 2026 minimum wage baseline: $17.13/hr. :contentReference[oaicite:2]{index=2}")
 
     # ----------------------------
-    # Production (textbook-ish MP: rises then falls)
+    # Production: MP rises then falls (inverted-U), so MC falls then rises (U-shape)
     # ----------------------------
-    # MP per additional employee (burgers/week) is a simple quadratic:
-    # MP(L) = base + gain*L - decay*L^2, clipped at >= 0
-    # This yields increasing MP early, then diminishing MP, then near-zero.
-    L_star = 5
-    b = 6
-    d = -0.2
-
-    c = -(b + 6*d*(L_star**2)) / (3*L_star)
-    a = (1000 - b*(L_star**2) - c*(L_star**3) - d*(L_star**4)) / L_star
-
     employees = np.arange(1, max_employees + 1)
 
-    #TP = a*employees + b*employees**2 + c*employees**3 + d*employees**4
-    mp = a + 2*b*employees + 3*c*employees**2 + 4*d*employees**3
-    
-    # --- Compute MC normally ---
-    MC_raw = wage / np.clip(mp, 1e-6, None)
+    # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
+    # Tune these three:
+    A = 120.0      # baseline MP
+    B = 18.0       # early gains from specialization
+    D = 1.8        # diminishing returns strength (bigger => earlier/faster drop)
 
-    # --- Clip so MC decreases up to the minimum, then never decreases after ---
-    min_idx = int(np.argmin(MC_raw))
+    mp = A + B*employees - D*(employees**2)
 
-    MC = MC_raw.copy()
-    MC[min_idx:] = np.maximum.accumulate(MC_raw[min_idx:])
-   
+    # MP must be positive for production to keep increasing
+    mp = np.clip(mp, 1e-6, None)
 
-    # Total product (burgers/week) with L employees: cumulative sum of marginal products
+    # Total product (burgers/week)
     q = np.cumsum(mp)
 
-    # Costs
-    weekly_labor_cost_per_employee = wage * hours_per_employee
+    # ----------------------------
+    # Costs (make units consistent)
+    # ----------------------------
+    weekly_labor_cost_per_employee = wage * hours_per_employee  # $/week per employee
     vc = weekly_labor_cost_per_employee * employees
     fc = np.full_like(employees, fixed_cost, dtype=float)
     tc = fc + vc
 
-    # Avoid divide-by-zero (q should be positive, but guard anyway)
+    # Avoid divide-by-zero
     q_safe = np.where(q <= 0, np.nan, q)
 
     afc = fc / q_safe
     avc = vc / q_safe
     atc = tc / q_safe
 
-    # MC = ΔTC / ΔQ (discrete marginal cost)
+    # ----------------------------
+    # Marginal Cost (correct discrete version)
+    # MC = ΔTC / ΔQ
+    # ----------------------------
     dq = np.diff(q, prepend=np.nan)
     dtc = np.diff(tc, prepend=np.nan)
-    mc = dtc / dq
+    mc_raw = dtc / dq
+    mc_raw[0] = np.nan
 
-    # Clean up first point (nan diffs)
-    mc[0] = np.nan
+    # ----------------------------
+    # Clip MC so it cannot decrease AFTER its minimum
+    # (keeps the left-side decline, enforces right-side increase)
+    # ----------------------------
+    mc = mc_raw.copy()
+    valid = np.isfinite(mc)
+
+    if np.any(valid):
+        min_idx = np.nanargmin(mc)  # ignores NaNs
+        mc[min_idx:] = np.maximum.accumulate(mc[min_idx:])
 
     # ----------------------------
     # Choose burger price -> produce where P >= AVC and MC crosses P
@@ -1445,6 +1447,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
