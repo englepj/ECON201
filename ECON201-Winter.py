@@ -1055,14 +1055,14 @@ def page_cost_curve_explorer():
     # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
     # Tune these three:
     A = 120.0
-    B = 18.0
-    D = 0.45
+    B = 30.0
+    D = 0.2
 
     mp = A + B*employees - D*(employees**2)
 
     # MP must be positive for production to keep increasing
     mp = np.clip(mp, 1e-6, None)
-    mp = np.maximum(mp, 0.35)
+    mp = np.maximum(mp, 0.5)
     
     # Total product (burgers/week)
     q = np.cumsum(mp)
