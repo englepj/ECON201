@@ -1063,7 +1063,7 @@ def page_cost_curve_explorer():
     employees = np.arange(1, max_employees + 1)
 
     #TP = a*employees + b*employees**2 + c*employees**3 + d*employees**4
-    MP = a + 2*b*employees + 3*c*employees**2 + 4*d*employees**3
+    mp = a + 2*b*employees + 3*c*employees**2 + 4*d*employees**3
 
     # Total product (burgers/week) with L employees: cumulative sum of marginal products
     q = np.cumsum(mp)
@@ -1435,6 +1435,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
