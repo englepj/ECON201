@@ -1062,7 +1062,8 @@ def page_cost_curve_explorer():
 
     # MP must be positive for production to keep increasing
     mp = np.clip(mp, 1e-6, None)
-
+    mp = np.maximum(mp, 0.35)
+    
     # Total product (burgers/week)
     q = np.cumsum(mp)
 
@@ -1447,6 +1448,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
