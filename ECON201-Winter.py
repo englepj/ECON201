@@ -1443,9 +1443,9 @@ game_choice = st.sidebar.radio("Select a Game:", list(pages.keys()), key="select
 st.sidebar.markdown("### 🔧 Model Parameters")
 
 A_tmp = st.sidebar.slider("A: Baseline Productivity", 50.0, 600.0, 300.0, 10.0)
-B_tmp = st.sidebar.slider("B: Early Gains", 0.0, 150.0, 40.0, 5.0)
+B_tmp = st.sidebar.slider("B: Early Gains", 0.0, 800.0, 40.0, 5.0)
 D_tmp = st.sidebar.slider("D: Diminishing Returns", 1, 60, 20, 1)
-X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 20, 8, 1)
+X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 400, 8, 1)
 
 # ----------------------------
 # Initialize session state ONCE
@@ -1481,6 +1481,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
