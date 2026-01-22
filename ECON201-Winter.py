@@ -1063,7 +1063,7 @@ def page_cost_curve_explorer():
     mp = A + B*employees - D*(employees**2)
 
     # MP must be positive for production to keep increasing
-    mp = np.clip(mp, 1e-6, None)
+    mp = np.clip(mp, 1e-9, None)
     mp = np.maximum(mp, X3)
     
     # Total product (burgers/week)
@@ -1159,7 +1159,7 @@ def page_cost_curve_explorer():
     # ----------------------------
 
     cost_curves_fig = go.Figure()
-    cost_curves_fig.add_trace(go.Scatter(x=q, y=afc, mode="lines", name="AFC", line=dict(color=cbc_lightblue, dash="dot")))
+    cost_curves_fig.add_trace(go.Scatter(x=q, y=afc, mode="lines", name="AFC", line=dict(color=cbc_darkblue, dash="dot")))
     cost_curves_fig.add_trace(go.Scatter(x=q, y=avc, mode="lines", name="AVC", line=dict(color=cbc_orange)))
     cost_curves_fig.add_trace(go.Scatter(x=q, y=atc, mode="lines", name="ATC", line=dict(color="black", width=3)))
     cost_curves_fig.add_trace(go.Scatter(x=q, y=mc, mode="lines", name="MC", line=dict(color=cbc_gold)))
@@ -1481,6 +1481,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
