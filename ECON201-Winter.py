@@ -1057,12 +1057,13 @@ def page_cost_curve_explorer():
     A = 300.0
     B = 40.0
     D = 20
+    X3 = 8
 
     mp = A + B*employees - D*(employees**2)
 
     # MP must be positive for production to keep increasing
     mp = np.clip(mp, 1e-6, None)
-    mp = np.maximum(mp, 8)
+    mp = np.maximum(mp, X3)
     
     # Total product (burgers/week)
     q = np.cumsum(mp)
@@ -1435,6 +1436,40 @@ pages = {
 
 game_choice = st.sidebar.radio("Select a Game:", list(pages.keys()), key="selected_game")
 
+st.sidebar.markdown("### 🔧 Model Parameters (Temporary)")
+
+A = st.sidebar.slider(
+    "A: Baseline Productivity",
+    min_value=50.0,
+    max_value=600.0,
+    value=300.0,
+    step=10.0
+)
+
+B = st.sidebar.slider(
+    "B: Early Gains / Specialization",
+    min_value=0.0,
+    max_value=150.0,
+    value=40.0,
+    step=5.0
+)
+
+D = st.sidebar.slider(
+    "D: Diminishing Returns Strength",
+    min_value=1,
+    max_value=60,
+    value=20,
+    step=1
+)
+
+X3 = st.sidebar.slider(
+    "X3: Peak / Inflection Point (Employees)",
+    min_value=1,
+    max_value=20,
+    value=8,
+    step=1
+)
+
 # Render selected page
 pages[game_choice]()
 
@@ -1448,6 +1483,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
