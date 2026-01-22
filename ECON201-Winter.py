@@ -1054,10 +1054,11 @@ def page_cost_curve_explorer():
 
     # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
     # Tune these three:
-    A = 300.0
-    B = 40.0
-    D = 20
-    X3 = 8
+    # --- read applied parameters (AFTER sidebar controls) ---
+    A  = st.session_state.params["A"]
+    B  = st.session_state.params["B"]
+    D  = st.session_state.params["D"]
+    X3 = st.session_state.params["X3"]
 
     mp = A + B*employees - D*(employees**2)
 
@@ -1436,41 +1437,19 @@ pages = {
 
 game_choice = st.sidebar.radio("Select a Game:", list(pages.keys()), key="selected_game")
 
-st.sidebar.markdown("### 🔧 Model Parameters (Temporary)")
+# ----------------------------
+# Sidebar controls
+# ----------------------------
+st.sidebar.markdown("### 🔧 Model Parameters")
 
-A = st.sidebar.slider(
-    "A: Baseline Productivity",
-    min_value=50.0,
-    max_value=600.0,
-    value=300.0,
-    step=10.0
-)
+A_tmp = st.sidebar.slider("A: Baseline Productivity", 50.0, 600.0, 300.0, 10.0)
+B_tmp = st.sidebar.slider("B: Early Gains", 0.0, 150.0, 40.0, 5.0)
+D_tmp = st.sidebar.slider("D: Diminishing Returns", 1, 60, 20, 1)
+X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 20, 8, 1)
 
-B = st.sidebar.slider(
-    "B: Early Gains / Specialization",
-    min_value=0.0,
-    max_value=150.0,
-    value=40.0,
-    step=5.0
-)
-
-D = st.sidebar.slider(
-    "D: Diminishing Returns Strength",
-    min_value=1,
-    max_value=60,
-    value=20,
-    step=1
-)
-
-X3 = st.sidebar.slider(
-    "X3: Peak / Inflection Point (Employees)",
-    min_value=1,
-    max_value=20,
-    value=8,
-    step=1
-)
-
-# Initialize once
+# ----------------------------
+# Initialize session state ONCE
+# ----------------------------
 if "params" not in st.session_state:
     st.session_state.params = {
         "A": 300.0,
@@ -1479,18 +1458,15 @@ if "params" not in st.session_state:
         "X3": 8
     }
 
-# --- Apply button ---
+# ----------------------------
+# Apply button (must come AFTER sliders)
+# ----------------------------
 if st.sidebar.button("➕ Add / Apply Curve"):
-    st.session_state.params = {
-        "A": A_tmp,
-        "B": B_tmp,
-        "D": D_tmp,
-        "X3": X3_tmp
-    }
-A = st.session_state.params["A"]
-B = st.session_state.params["B"]
-D = st.session_state.params["D"]
-X3 = st.session_state.params["X3"]
+    st.session_state.params["A"] = A_tmp
+    st.session_state.params["B"] = B_tmp
+    st.session_state.params["D"] = D_tmp
+    st.session_state.params["X3"] = X3_tmp
+    
 
 # Render selected page
 pages[game_choice]()
@@ -1505,6 +1481,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
