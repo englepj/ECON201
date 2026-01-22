@@ -1487,7 +1487,10 @@ if st.sidebar.button("➕ Add / Apply Curve"):
         "D": D_tmp,
         "X3": X3_tmp
     }
-
+A = st.session_state.params["A"]
+B = st.session_state.params["B"]
+D = st.session_state.params["D"]
+X3 = st.session_state.params["X3"]
 
 # Render selected page
 pages[game_choice]()
@@ -1502,6 +1505,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
