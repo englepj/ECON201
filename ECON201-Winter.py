@@ -30,6 +30,7 @@ cbc_lightblue = "#dbeefd"
 cbc_gold = "#fce58b"
 cbc_orange = "#fbb885"
 cbc_darkorange = "#f28a6c"
+cbc_darkblue = "#00457c"
 
 st.set_page_config(page_title="ECON&201 Simulations", page_icon="📊", layout="wide")
 
@@ -1481,6 +1482,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
