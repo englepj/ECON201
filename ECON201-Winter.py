@@ -1470,6 +1470,25 @@ X3 = st.sidebar.slider(
     step=1
 )
 
+# Initialize once
+if "params" not in st.session_state:
+    st.session_state.params = {
+        "A": 300.0,
+        "B": 40.0,
+        "D": 20,
+        "X3": 8
+    }
+
+# --- Apply button ---
+if st.sidebar.button("➕ Add / Apply Curve"):
+    st.session_state.params = {
+        "A": A_tmp,
+        "B": B_tmp,
+        "D": D_tmp,
+        "X3": X3_tmp
+    }
+
+
 # Render selected page
 pages[game_choice]()
 
@@ -1483,6 +1502,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
