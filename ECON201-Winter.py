@@ -1051,7 +1051,7 @@ def page_cost_curve_explorer():
     # ----------------------------
     # Production: MP rises then falls (inverted-U), so MC falls then rises (U-shape)
     # ----------------------------
-    employees = np.arange(1, max_employees + 1)
+    employees = np.arange(1, 100)
 
     # MP(L) = A + B*L - D*L^2  (inverted-U if D>0)
     # Tune these three:
@@ -1453,8 +1453,8 @@ X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 400, 8, 1)
 # ----------------------------
 if "params" not in st.session_state:
     st.session_state.params = {
-        "A": 300.0,
-        "B": 40.0,
+        "A": 180.0,
+        "B": 335.0,
         "D": 20,
         "X3": 8
     }
@@ -1482,6 +1482,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
