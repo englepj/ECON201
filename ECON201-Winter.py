@@ -1016,155 +1016,144 @@ def page_coordination_conflict():
 
 def page_cost_curve_explorer():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-    st.markdown("## 🍔 Wendy’s (WA) Cost Curve Explorer — Weekly Scenario")
-    st.write("Weekly Wendy’s example (WA): fixed overhead + labor-driven variable cost; MP rises then falls (MC U-shape).")
-    st.caption("WA state minimum wage in 2026 is $17.13/hr (baseline for the labor-cost slider).")
+    st.markdown("## 🍔 Wendy’s Cost Curve Explorer — Stylized (Textbook MC)")
+    st.write("Two inputs: **Fixed cost** and a **labor cost level** (interpreted as the minimum of AVC/MC at the efficient scale).")
 
-    # --- Controls (compact) ---
-    c1, c2, c3 = st.columns(3)
+    # ----------------------------
+    # Inputs (ONLY these two)
+    # ----------------------------
+    c1, c2 = st.columns(2)
     fixed_cost = c1.slider("Weekly Fixed Cost ($)", 0, 25000, 9000, 250)
-    max_employees = c2.slider("Max Employees Scheduled (for the curve)", 1, 30, 18, 1)
-    wage = c3.slider("Labor Cost ($/hour)", 10.0, 30.0, 17.13, 0.25)
-    hours_per_employee = c3.slider("Hours per Employee per Week", 10, 40, 30, 1)
+    labor_level = c2.slider("Labor Cost Level ($ per burger at efficient scale)", 0.50, 12.00, 4.00, 0.25)
 
-    # --- MP parameters ---
-    A, B, D, X3 = (st.session_state.params[k] for k in ("A", "B", "D", "X3"))
+    # Optional price (keeps your Q* / shading logic)
+    st.markdown("### 💵 Price → Output (Profit/Loss Shading)")
+    price = st.slider("Burger Price ($)", 0.50, 20.00, 5.00, 0.10)
 
-    # Smooth grid for curves (bigger grid => longer x-axis potential)
-    L = np.arange(1, max(250, max_employees * 12) + 1)
+    # ----------------------------
+    # Textbook cost functional form (NOT tied to MP/MPL)
+    # VC(q) = a1*q + a2*q^2 + a3*q^3
+    # => AVC(q)=a1 + a2*q + a3*q^2  (U-shaped if a2<0, a3>0)
+    # => MC(q)=a1 + 2*a2*q + 3*a3*q^2 (U-shaped)
+    # And MC intersects AVC at min AVC.
+    # ----------------------------
+    QMAX, N = 6000, 400
+    q = np.linspace(1, QMAX, N)
 
-    # --- Production (NO MP hard floor -> MC won't "top out") ---
-    mp_raw = A + B * L - D * (L ** 2)
-    mp = np.clip(mp_raw, 1e-6, None)        # keep Q increasing, but do NOT flatten MP to X3
-    q = np.cumsum(mp)
+    q_eff = 1200.0  # "efficient scale" where AVC is minimized (stylized)
+    a3 = 0.5 * labor_level / (q_eff**2)     # curvature (crowding/complexity)
+    a2 = -2 * a3 * q_eff                    # ensures min of AVC at q_eff
+    a1 = labor_level - (a2*q_eff + a3*q_eff**2)  # ensures AVC(q_eff)=labor_level
 
-    # --- Costs ---
-    w_week = wage * hours_per_employee
-    vc = w_week * L
-    fc = np.full_like(L, fixed_cost, dtype=float)
+    vc = a1*q + a2*q**2 + a3*q**3
+    fc = np.full_like(q, fixed_cost, dtype=float)
     tc = fc + vc
 
-    q_safe = np.where(q > 0, q, np.nan)
-    afc, avc, atc = fc / q_safe, vc / q_safe, tc / q_safe
+    afc = fc / q
+    avc = vc / q
+    atc = tc / q
+    mc = a1 + 2*a2*q + 3*a3*q**2
 
-    # --- MC (discrete) + enforce nondecreasing after minimum ---
-    dq, dtc = np.diff(q, prepend=np.nan), np.diff(tc, prepend=np.nan)
-    mc = dtc / dq
-    mc[0] = np.nan
-    if np.any(np.isfinite(mc)):
-        m = np.nanargmin(mc)
-        mc[m:] = np.maximum.accumulate(mc[m:])
+    # Enforce textbook-ish "MC doesn't decline after its minimum" (optional but nice)
+    m = int(np.nanargmin(mc))
+    mc[m:] = np.maximum.accumulate(mc[m:])
 
-    # ============================
-    # KEY CHANGE:
-    # Use X3 to control *how far right we plot* by capping MC,
-    # instead of flooring MP (which causes MC to plateau).
-    # Larger X3 => smaller MC_cap => shorter/cleaner right tail.
-    # Smaller X3 => larger MC_cap => longer x-axis.
-    # ============================
-    mc_cap = (w_week / max(X3, 1e-6)) * 1.25   # 1.25 = allow a bit past the "X3-implied" cap
-
+    # ----------------------------
+    # Visual cap: do NOT plot per-unit costs above $20 (view window only)
+    # (This extends x further until MC hits 20, while keeping it readable.)
+    # ----------------------------
     MC_CAP = 20.0
-    
     ok = np.where(np.isfinite(mc) & (mc <= MC_CAP))[0]
-    i_max = int(ok[-1]) if len(ok) else len(mc) - 1
+    i_max = int(ok[-1]) if len(ok) else len(q) - 1
 
-    # --- Price → Q* (shutdown check) ---
-    st.markdown("### 💵 Price → Output (Profit/Loss Shading)")
-    price = st.slider("Burger Price ($)", 0.50, 10.00, 5.00, 0.10)
+    qP, tcP, fcP, vcP = (arr[:i_max+1] for arr in (q, tc, fc, vc))
+    afcP, avcP, atcP, mcP = (arr[:i_max+1] for arr in (afc, avc, atc, mc))
 
-    avc_min = np.nanmin(avc)
-    feas = np.where(np.isfinite(mc) & (mc <= price) & (price >= avc_min))[0]
-    idx_star = int(feas[-1]) if len(feas) else None
-    q_star = float(q[idx_star]) if idx_star is not None else 0.0
+    # ----------------------------
+    # Choose Q* (shutdown: P < min AVC => 0)
+    # ----------------------------
+    avc_min = float(np.nanmin(avcP))
+    if price < avc_min:
+        idx_star, q_star, revenue, profit, atc_star = None, 0.0, 0.0, 0.0, np.nan
+    else:
+        feas = np.where(np.isfinite(mcP) & (mcP <= price))[0]
+        idx_star = int(feas[-1]) if len(feas) else None
+        q_star = float(qP[idx_star]) if idx_star is not None else 0.0
+        revenue = price * q_star if q_star > 0 else 0.0
+        atc_star = float(atcP[idx_star]) if idx_star is not None else np.nan
+        profit = revenue - float(tcP[idx_star]) if idx_star is not None else 0.0
 
-    revenue = price * q_star if q_star > 0 else 0.0
-    atc_star = float(atc[idx_star]) if idx_star is not None else np.nan
-    profit = (revenue - float(tc[idx_star])) if idx_star is not None else 0.0
-
-    # --- Restrict arrays for plotting ---
-    qP, tcP, fcP, vcP = (arr[: i_max + 1] for arr in (q, tc, fc, vc))
-    afcP, avcP, atcP, mcP = (arr[: i_max + 1] for arr in (afc, avc, atc, mc))
-
-    # Auto-zoom near intersections (MC↔P, MC↔ATC, MC↔AVC, and Q*)
-    def _cross(y, z):
-        y = np.asarray(y, dtype=float)
-        z = np.asarray(z, dtype=float) if np.ndim(z) else float(z)
-        s = np.sign(y - z)
-        s[np.isnan(s)] = 0
-        return (np.where(np.diff(s) != 0)[0] + 1).tolist()
-
-    interesting = []
-    if idx_star is not None and idx_star <= i_max:
-        interesting.append(idx_star)
-    interesting += _cross(mcP, price) + _cross(mcP, atcP) + _cross(mcP, avcP)
-    if not interesting:
-        interesting = [int(np.nanargmin(mcP))]
-
-    lo = max(0, min(interesting) - 10)
-    hi = min(len(qP) - 1, max(interesting) + 40)  # <-- extend view further right than before
-
-    x_min, x_max = float(qP[lo]), float(qP[hi])
-
-    y_slice = np.r_[mcP[lo : hi + 1], atcP[lo : hi + 1], avcP[lo : hi + 1], [price]]
-    y_slice = y_slice[np.isfinite(y_slice)]
-    y_min, y_max = 0.0, (float(np.nanmax(y_slice)) * 1.25 if len(y_slice) else 10.0)
-
-    # --- Plot 1: Cost levels ---
-    cost_levels_fig = go.Figure()
+    # ----------------------------
+    # Plot 1: Levels
+    # ----------------------------
+    levels = go.Figure()
     for y, name, col in [(tcP, "Total Cost (TC)", cbc_blue), (fcP, "Fixed Cost (FC)", cbc_lightblue), (vcP, "Variable Cost (VC)", cbc_orange)]:
-        cost_levels_fig.add_trace(go.Scatter(x=qP, y=y, mode="lines+markers", name=name, line=dict(color=col)))
-    cost_levels_fig.update_layout(
-        title="Weekly Cost Levels vs Weekly Burgers Produced",
+        levels.add_trace(go.Scatter(x=qP, y=y, mode="lines", name=name, line=dict(color=col)))
+    levels.update_layout(
+        title="Weekly Cost Levels vs Quantity",
         xaxis_title="Quantity (burgers/week)",
         yaxis_title="Cost ($/week)",
         template="simple_white",
     )
 
-    # --- Plot 2: Curves + price + shading ---
-    cost_curves_fig = go.Figure()
+    # ----------------------------
+    # Plot 2: Per-unit curves + price + shading (y capped at $20)
+    # ----------------------------
+    curves = go.Figure()
     for y, n, c, d, w in [(afcP, "AFC", cbc_darkblue, "dot", 2), (avcP, "AVC", cbc_orange, None, 2), (atcP, "ATC", "black", None, 3), (mcP, "MC", cbc_gold, None, 3)]:
-        cost_curves_fig.add_trace(go.Scatter(x=qP, y=y, mode="lines", name=n, line=dict(color=c, dash=d, width=w)))
+        curves.add_trace(go.Scatter(x=qP, y=y, mode="lines", name=n, line=dict(color=c, dash=d, width=w)))
 
-    cost_curves_fig.add_hline(y=price, line_dash="dash", annotation_text=f"Price = ${price:,.2f}", annotation_position="top left")
+    curves.add_hline(y=price, line_dash="dash", annotation_text=f"Price = ${price:,.2f}", annotation_position="top left")
 
     shapes = []
     if idx_star is not None and q_star > 0:
-        cost_curves_fig.add_vline(x=q_star, line_dash="dash", annotation_text=f"Q* ≈ {q_star:,.0f}", annotation_position="bottom right")
+        curves.add_vline(x=q_star, line_dash="dash", annotation_text=f"Q* ≈ {q_star:,.0f}", annotation_position="bottom right")
         shapes.append(dict(type="rect", xref="x", yref="y", x0=0, x1=q_star, y0=0, y1=price,
                            fillcolor="rgba(120,120,120,0.18)", line=dict(width=0), layer="below"))
         if np.isfinite(atc_star):
             y0, y1, fill = (atc_star, price, "rgba(0,160,0,0.22)") if profit >= 0 else (price, atc_star, "rgba(200,0,0,0.22)")
             shapes.append(dict(type="rect", xref="x", yref="y", x0=0, x1=q_star, y0=y0, y1=y1,
                                fillcolor=fill, line=dict(width=0), layer="below"))
-        st.write(f"**Output choice:** Q* ≈ **{q_star:,.0f} burgers/week**  |  **Revenue:** ${revenue:,.0f}  |  **Profit:** ${profit:,.0f}")
+        st.write(f"**Q\*** ≈ **{q_star:,.0f} burgers/week**  |  **Revenue:** ${revenue:,.0f}  |  **Profit:** ${profit:,.0f}")
     else:
-        st.warning("At this price, the firm produces **0 burgers** (price is below AVC or never reaches MC).")
+        st.warning("At this price, the firm produces **0 burgers** (price is below AVC or MC never reaches price in view).")
 
-    cost_curves_fig.update_layout(
-        title="Per-Unit Cost Curves with Price, Output, and Revenue/Profit/Loss Shading",
-        xaxis=dict(title="Quantity (burgers/week)", range=[x_min, x_max]),
-        yaxis=dict(title="Cost ($/burger)", range=[y_min, y_max]),
+    curves.update_layout(
+        title="Per-Unit Cost Curves (Capped at $20 for readability)",
+        xaxis_title="Quantity (burgers/week)",
+        yaxis_title="Cost ($/burger)",
         template="simple_white",
+        yaxis=dict(range=[0, 20]),
         shapes=shapes,
     )
 
-    # --- Layout ---
-    col1, col2 = st.columns(2)
-    col1.plotly_chart(cost_levels_fig, use_container_width=True)
-    col2.plotly_chart(cost_curves_fig, use_container_width=True)
+    # ----------------------------
+    # Layout
+    # ----------------------------
+    a, b = st.columns(2)
+    a.plotly_chart(levels, use_container_width=True)
+    b.plotly_chart(curves, use_container_width=True)
 
-    # --- Export ---
+    # ----------------------------
+    # Export
+    # ----------------------------
     df_cost = pd.DataFrame({
-        "Employees": L, "Marginal Product (burgers/employee)": mp, "Quantity (burgers/week)": q,
-        "Fixed Cost (weekly $)": fc, "Variable Cost (weekly $)": vc, "Total Cost (weekly $)": tc,
-        "AFC ($/burger)": afc, "AVC ($/burger)": avc, "ATC ($/burger)": atc, "MC ($/burger)": mc,
-        "Wage ($/hr)": wage, "Hours per Employee": hours_per_employee,
-        "Weekly labor cost per employee ($)": np.full_like(L, w_week, dtype=float),
-        "Selected Price ($/burger)": np.full_like(L, price, dtype=float),
+        "Quantity (burgers/week)": q,
+        "Fixed Cost (weekly $)": fc,
+        "Variable Cost (weekly $)": vc,
+        "Total Cost (weekly $)": tc,
+        "AFC ($/burger)": afc,
+        "AVC ($/burger)": avc,
+        "ATC ($/burger)": atc,
+        "MC ($/burger)": mc,
+        "Fixed Cost input ($/week)": np.full_like(q, fixed_cost, dtype=float),
+        "Labor cost level input ($/burger at efficient scale)": np.full_like(q, labor_level, dtype=float),
+        "Selected Price ($/burger)": np.full_like(q, price, dtype=float),
     })
-    export_csv_button("📥 Download Wendy’s Cost Curves (CSV)", df_cost, "wendys_cost_curves")
+    export_csv_button("📥 Download Cost Curves (CSV)", df_cost, "wendys_cost_curves_stylized")
+
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 def page_supply_demand_shock():
@@ -1305,12 +1294,12 @@ game_choice = st.sidebar.radio("Select a Game:", list(pages.keys()), key="select
 # ----------------------------
 # Sidebar controls
 # ----------------------------
-st.sidebar.markdown("### 🔧 Model Parameters")
-
-A_tmp = st.sidebar.slider("A: Baseline Productivity", 50.0, 600.0, 300.0, 10.0)
-B_tmp = st.sidebar.slider("B: Early Gains", 0.0, 800.0, 40.0, 5.0)
-D_tmp = st.sidebar.slider("D: Diminishing Returns", 1, 60, 20, 1)
-X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 400, 8, 1)
+#st.sidebar.markdown("### 🔧 Model Parameters")
+#
+#A_tmp = st.sidebar.slider("A: Baseline Productivity", 50.0, 600.0, 300.0, 10.0)
+#B_tmp = st.sidebar.slider("B: Early Gains", 0.0, 800.0, 40.0, 5.0)
+#D_tmp = st.sidebar.slider("D: Diminishing Returns", 1, 60, 20, 1)
+#X3_tmp = st.sidebar.slider("X3: Peak / Inflection", 1, 400, 8, 1)
 
 # ----------------------------
 # Initialize session state ONCE
@@ -1346,6 +1335,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
