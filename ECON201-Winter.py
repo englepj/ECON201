@@ -1156,8 +1156,13 @@ def page_cost_curve_explorer():
     df_cost = pd.DataFrame({
         "Employees": L, "Marginal Product (burgers/employee)": mp, "Quantity (burgers/week)": q,
         "Fixed Cost (weekly $)": fc, "Variable Cost (weekly $)": vc, "Total Cost (weekly $)": tc,
-        "AFC ($/burger)"
-
+        "AFC ($/burger)": afc, "AVC ($/burger)": avc, "ATC ($/burger)": atc, "MC ($/burger)": mc,
+        "Wage ($/hr)": wage, "Hours per Employee": hours_per_employee,
+        "Weekly labor cost per employee ($)": np.full_like(L, w_week, dtype=float),
+        "Selected Price ($/burger)": np.full_like(L, price, dtype=float),
+    })
+    export_csv_button("📥 Download Wendy’s Cost Curves (CSV)", df_cost, "wendys_cost_curves")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def page_supply_demand_shock():
@@ -1339,6 +1344,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
