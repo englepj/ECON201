@@ -1063,9 +1063,11 @@ def page_cost_curve_explorer():
     # Smaller X3 => larger MC_cap => longer x-axis.
     # ============================
     mc_cap = (w_week / max(X3, 1e-6)) * 1.25   # 1.25 = allow a bit past the "X3-implied" cap
-    ok = np.where(np.isfinite(mc) & (mc <= mc_cap))[0]
-    i_max = int(ok[-1]) if len(ok) else len(L) - 1
-    i_max = max(i_max, 5)  # safety
+
+    MC_CAP = 20.0
+    
+    ok = np.where(np.isfinite(mc) & (mc <= MC_CAP))[0]
+    i_max = int(ok[-1]) if len(ok) else len(mc) - 1
 
     # --- Price → Q* (shutdown check) ---
     st.markdown("### 💵 Price → Output (Profit/Loss Shading)")
@@ -1344,6 +1346,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
