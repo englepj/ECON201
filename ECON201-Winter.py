@@ -1159,113 +1159,310 @@ def page_cost_curve_explorer():
 def page_supply_demand_shock():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 📉📈 Supply & Demand Shock Simulator")
+    st.write("Explore how shifts in supply or demand affect equilibrium price/quantity — and visualize ceilings/floors with a chosen price line.")
 
-    st.write("Explore how shifts in supply or demand affect equilibrium price and quantity, and how surplus changes.")
+    # ----------------------------
+    # Helpers
+    # ----------------------------
+    def fmt_1sig(x):
+        if x is None:
+            return "N/A"
+        try:
+            if np.isnan(x) or np.isinf(x):
+                return "N/A"
+        except Exception:
+            pass
+        return f"{float(x):.1g}"
 
-    initial_demand_intercept = st.slider("Initial Demand Intercept (P when Q=0)", 10, 100, 60)
-    demand_slope = st.slider("Demand Slope (negative)", -10, -1, -5)
-    initial_supply_intercept = st.slider("Initial Supply Intercept (P when Q=0)", 10, 100, 20)
-    supply_slope = st.slider("Supply Slope (positive)", 1, 10, 5)
+    def line_intercepts(P0, slope):
+        # P = P0 + slope*Q
+        y_int = (0.0, float(P0))
+        x_q = None if slope == 0 else float(-P0 / slope)
+        x_int = (x_q, 0.0) if x_q is not None else (None, 0.0)
+        return y_int, x_int
 
-    demand_shift = st.slider("Demand Shift (horizontal)", -50, 50, 0)
-    supply_shift = st.slider("Supply Shift (horizontal)", -50, 50, 0)
+    def q_at_price(P0, slope, Pbar):
+        if slope == 0:
+            return None
+        return float((Pbar - P0) / slope)
 
-    quantity = np.linspace(0, 50, 500)
-    initial_demand = initial_demand_intercept + demand_slope * quantity
-    initial_supply = initial_supply_intercept + supply_slope * quantity
+    def equilibrium(P0d, sd, P0s, ss):
+        denom = (sd - ss)
+        if denom == 0:
+            return None, None
+        Q = float((P0s - P0d) / denom)
+        P = float(P0d + sd * Q)
+        return Q, P
 
-    new_demand = initial_demand_intercept + demand_slope * (quantity - demand_shift)
-    new_supply = initial_supply_intercept + supply_slope * (quantity - supply_shift)
+    def clip_nonneg(q):
+        if q is None:
+            return None
+        if not np.isfinite(q):
+            return None
+        return float(q) if q >= 0 else None
 
-    def find_equilibrium(d_line, s_line):
-        diff = np.abs(d_line - s_line)
-        idx = int(np.argmin(diff))
-        return float(quantity[idx]), float(d_line[idx])
+    def add_price_line(fig, Pbar_, qmax_):
+        if Pbar_ is None or (not np.isfinite(Pbar_)):
+            return
+        fig.add_trace(
+            go.Scatter(
+                x=[0, qmax_],
+                y=[Pbar_, Pbar_],
+                mode="lines",
+                name="Selected Price",
+                line=dict(color="darkgreen", dash="dash"),
+            )
+        )
 
-    q_eq_init, p_eq_init = find_equilibrium(initial_demand, initial_supply)
-    q_eq_new, p_eq_new = find_equilibrium(new_demand, new_supply)
+    def add_point(fig, q, p, name, symbol="circle", size=9, color=cbc_gold):
+        if q is None or p is None:
+            return
+        if (not np.isfinite(q)) or (not np.isfinite(p)) or q < 0:
+            return
+        fig.add_trace(go.Scatter(x=[q], y=[p], mode="markers", name=name, marker=dict(size=size, symbol=symbol, color=color)))
 
-    max_price = float(max(initial_demand[0], initial_supply[0], new_demand[0], new_supply[0]))
+    def points_for_lines(P0d_, sd_, P0s_, ss_, Pbar_):
+        q_eq, p_eq = equilibrium(P0d_, sd_, P0s_, ss_)
+        q_eq = clip_nonneg(q_eq)
+        p_eq = float(p_eq) if (q_eq is not None and p_eq is not None) else None
 
-    cs_init = triangle_area(q_eq_init, float(initial_demand[0] - p_eq_init))
-    ps_init = triangle_area(q_eq_init, float(p_eq_init - initial_supply[0]))
+        d_y, d_x = line_intercepts(P0d_, sd_)
+        s_y, s_x = line_intercepts(P0s_, ss_)
 
+        d_qp = clip_nonneg(q_at_price(P0d_, sd_, Pbar_)) if Pbar_ is not None else None
+        s_qp = clip_nonneg(q_at_price(P0s_, ss_, Pbar_)) if Pbar_ is not None else None
+
+        return {
+            "eq": (q_eq, p_eq),
+            "d_y": d_y,
+            "d_x": d_x,
+            "s_y": s_y,
+            "s_x": s_x,
+            "d_qp": (d_qp, Pbar_) if d_qp is not None else (None, Pbar_),
+            "s_qp": (s_qp, Pbar_) if s_qp is not None else (None, Pbar_),
+        }
+
+    # ----------------------------
+    # TOP CONTROLS: shocks + ALWAYS-ON price selector
+    # ----------------------------
+    top = st.container()
+    with top:
+        c1, c2, c3 = st.columns([1.2, 1.2, 1.0])
+
+        with c1:
+            demand_shift = st.slider("Demand Shock (ΔQ; + shifts right)", -50, 50, 0)
+            supply_shift = st.slider("Supply Shock (ΔQ; + shifts right)", -50, 50, 0)
+
+        with c3:
+            show_initial_on_new = st.checkbox("Show initial curves on the shock chart", value=True)
+
+    # ----------------------------
+    # Bottom controls (rendered later, but values used now)
+    # ----------------------------
+    if "sd_params" not in st.session_state:
+        st.session_state.sd_params = {"P0d": 60, "sd": -5, "P0s": 20, "ss": 5}
+
+    P0d = float(st.session_state.sd_params["P0d"])
+    sd = float(st.session_state.sd_params["sd"])  # negative
+    P0s = float(st.session_state.sd_params["P0s"])
+    ss = float(st.session_state.sd_params["ss"])  # positive
+
+    # Apply horizontal shocks:
+    P0d_new = float(P0d - sd * demand_shift)
+    P0s_new = float(P0s - ss * supply_shift)
+
+    # Equilibria (closed form)
+    q_eq_init, p_eq_init = equilibrium(P0d, sd, P0s, ss)
+    q_eq_new, p_eq_new = equilibrium(P0d_new, sd, P0s_new, ss)
+
+    # Always-on selected price slider:
+    # defaulted to (new) equilibrium price when it exists; otherwise a safe fallback.
+    default_price = int(np.clip(round(p_eq_new), 0, 120)) if (p_eq_new is not None and np.isfinite(p_eq_new)) else 40
+
+    with top:
+        with c2:
+            Pbar = st.slider("Selected Price (P̄) — ceilings/floors reference", 0, 120, default_price)
+
+    # ----------------------------
+    # SAME SCALE + CENTERING: build ONE shared axis range for both charts
+    # Try to center BOTH equilibria by choosing a midpoint and span.
+    # ----------------------------
+    eq_qs = [q for q in [q_eq_init, q_eq_new] if q is not None and np.isfinite(q)]
+    eq_ps = [p for p in [p_eq_init, p_eq_new] if p is not None and np.isfinite(p)]
+
+    q_center = float(np.mean(eq_qs)) if len(eq_qs) else 25.0
+    p_center = float(np.mean(eq_ps)) if len(eq_ps) else float(default_price)
+
+    # candidate Q points to make sure we don't clip important markers
+    q_candidates = []
+    for (P0_, slope_) in [(P0d, sd), (P0s, ss), (P0d_new, sd), (P0s_new, ss)]:
+        _, x_int = line_intercepts(P0_, slope_)
+        if x_int[0] is not None and np.isfinite(x_int[0]):
+            q_candidates.append(x_int[0])
+        qx = q_at_price(P0_, slope_, Pbar)
+        if qx is not None and np.isfinite(qx):
+            q_candidates.append(qx)
+
+    for q in [q_eq_init, q_eq_new]:
+        if q is not None and np.isfinite(q):
+            q_candidates.append(q)
+
+    # Span tries to include all relevant Q points, but keep it tight-ish around center
+    q_min_needed = min([q_center] + [q for q in q_candidates if q is not None and np.isfinite(q)])
+    q_max_needed = max([q_center] + [q for q in q_candidates if q is not None and np.isfinite(q)])
+    q_halfspan = max(q_center - q_min_needed, q_max_needed - q_center, 10.0)
+    q_halfspan *= 1.25  # margin
+
+    qmin = max(0.0, q_center - q_halfspan)
+    qmax = min(220.0, q_center + q_halfspan)
+    if qmax - qmin < 20:
+        qmax = min(220.0, qmin + 20.0)
+
+    quantity = np.linspace(qmin, qmax, 650)
+
+    # Curves (P vs Q)
+    initial_demand = P0d + sd * quantity
+    initial_supply = P0s + ss * quantity
+    new_demand = P0d_new + sd * quantity
+    new_supply = P0s_new + ss * quantity
+
+    # Y range: include curves over visible Q, plus Pbar, and try to center on equilibrium P
+    p_candidates = [
+        float(np.nanmin(initial_demand)), float(np.nanmax(initial_demand)),
+        float(np.nanmin(initial_supply)), float(np.nanmax(initial_supply)),
+        float(np.nanmin(new_demand)), float(np.nanmax(new_demand)),
+        float(np.nanmin(new_supply)), float(np.nanmax(new_supply)),
+        float(Pbar),
+    ]
+    p_min_needed = min(p_candidates + [p_center])
+    p_max_needed = max(p_candidates + [p_center])
+
+    p_halfspan = max(p_center - p_min_needed, p_max_needed - p_center, 10.0)
+    p_halfspan *= 1.25
+
+    pmin = max(0.0, p_center - p_halfspan)
+    pmax = min(220.0, p_center + p_halfspan)
+    if pmax - pmin < 10:
+        pmax = min(220.0, pmin + 10.0)
+
+    # Points for reporting/markers (computed with full lines, not truncated)
+    pts_init = points_for_lines(P0d, sd, P0s, ss, Pbar)
+    pts_new = points_for_lines(P0d_new, sd, P0s_new, ss, Pbar)
+
+    # ----------------------------
+    # CHARTS (shared axes)
+    # ----------------------------
     col1, col2 = st.columns(2)
 
     with col1:
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=quantity, y=initial_demand, mode="lines", name="Demand", line=dict(color=cbc_blue)))
         fig1.add_trace(go.Scatter(x=quantity, y=initial_supply, mode="lines", name="Supply", line=dict(color=cbc_orange)))
-        fig1.add_trace(go.Scatter(x=[q_eq_init], y=[p_eq_init], mode="markers", name="Equilibrium", marker=dict(size=10, color=cbc_gold)))
 
-        fig1.add_trace(
-            go.Scatter(
-                x=[0, q_eq_init, 0],
-                y=[p_eq_init, p_eq_init, float(initial_demand[0])],
-                fill="toself",
-                mode="none",
-                fillcolor="rgba(0, 138, 230, 0.2)",
-                name="Consumer Surplus",
-            )
-        )
-        fig1.add_trace(
-            go.Scatter(
-                x=[0, q_eq_init, 0],
-                y=[p_eq_init, p_eq_init, float(initial_supply[0])],
-                fill="toself",
-                mode="none",
-                fillcolor="rgba(255, 165, 0, 0.2)",
-                name="Producer Surplus",
-            )
-        )
+        add_price_line(fig1, Pbar, qmax)
 
-        fig1.update_layout(title="Initial Market", xaxis_title="Quantity", yaxis_title="Price", template="simple_white", yaxis=dict(range=[0, max_price]))
+        add_point(fig1, *pts_init["eq"], "Equilibrium", symbol="diamond", size=11, color=cbc_gold)
+        add_point(fig1, pts_init["d_y"][0], pts_init["d_y"][1], "Demand y-intercept (Q=0)", symbol="circle", size=8, color=cbc_blue)
+        add_point(fig1, pts_init["s_y"][0], pts_init["s_y"][1], "Supply y-intercept (Q=0)", symbol="circle", size=8, color=cbc_orange)
+
+        dxq, dxp = pts_init["d_x"]
+        sxq, sxp = pts_init["s_x"]
+        add_point(fig1, clip_nonneg(dxq), dxp, "Demand x-intercept (P=0)", symbol="x", size=10, color=cbc_blue)
+        add_point(fig1, clip_nonneg(sxq), sxp, "Supply x-intercept (P=0)", symbol="x", size=10, color=cbc_orange)
+
+        add_point(fig1, pts_init["d_qp"][0], pts_init["d_qp"][1], "Demand @ selected price", symbol="triangle-up", size=10, color=cbc_blue)
+        add_point(fig1, pts_init["s_qp"][0], pts_init["s_qp"][1], "Supply @ selected price", symbol="triangle-up", size=10, color=cbc_orange)
+
+        fig1.update_layout(
+            title="Initial Market",
+            xaxis_title="Quantity",
+            yaxis_title="Price",
+            template="simple_white",
+            xaxis=dict(range=[qmin, qmax]),
+            yaxis=dict(range=[pmin, pmax]),
+            legend=dict(orientation="h"),
+        )
         st.plotly_chart(fig1, use_container_width=True)
-        st.markdown(f"**Initial Consumer Surplus:** ${cs_init:.2f}")
-        st.markdown(f"**Initial Producer Surplus:** ${ps_init:.2f}")
+
+        qeq, peq = pts_init["eq"]
+        st.markdown(
+            "**Initial reference points (P, Q):**\n"
+            f"- Equilibrium: P={fmt_1sig(peq)}, Q={fmt_1sig(qeq)}\n"
+            f"- Demand intercepts: y(P|Q=0)={fmt_1sig(pts_init['d_y'][1])}, x(Q|P=0)={fmt_1sig(clip_nonneg(dxq))}\n"
+            f"- Supply intercepts: y(P|Q=0)={fmt_1sig(pts_init['s_y'][1])}, x(Q|P=0)={fmt_1sig(clip_nonneg(sxq))}\n"
+            f"- At selected price P̄={fmt_1sig(Pbar)}: Qd={fmt_1sig(pts_init['d_qp'][0])}, Qs={fmt_1sig(pts_init['s_qp'][0])}"
+        )
 
     with col2:
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=quantity, y=initial_demand, mode="lines", name="Initial Demand", line=dict(color=cbc_blue, dash="dash")))
-        fig2.add_trace(go.Scatter(x=quantity, y=initial_supply, mode="lines", name="Initial Supply", line=dict(color=cbc_orange, dash="dash")))
-        fig2.add_trace(go.Scatter(x=quantity, y=new_demand, mode="lines", name="New Demand", line=dict(color=cbc_blue, dash="dot")))
-        fig2.add_trace(go.Scatter(x=quantity, y=new_supply, mode="lines", name="New Supply", line=dict(color=cbc_orange, dash="dot")))
-        fig2.add_trace(go.Scatter(x=[q_eq_new], y=[p_eq_new], mode="markers", name="New Equilibrium", marker=dict(size=10, color=cbc_gold)))
+        if show_initial_on_new:
+            fig2.add_trace(go.Scatter(x=quantity, y=initial_demand, mode="lines", name="Initial Demand", line=dict(color=cbc_blue, dash="dash")))
+            fig2.add_trace(go.Scatter(x=quantity, y=initial_supply, mode="lines", name="Initial Supply", line=dict(color=cbc_orange, dash="dash")))
 
-        fig2.add_trace(
-            go.Scatter(
-                x=[0, q_eq_new, 0],
-                y=[p_eq_new, p_eq_new, float(new_demand[0])],
-                fill="toself",
-                mode="none",
-                fillcolor="rgba(0, 138, 230, 0.2)",
-                name="Consumer Surplus",
-            )
-        )
-        fig2.add_trace(
-            go.Scatter(
-                x=[0, q_eq_new, 0],
-                y=[p_eq_new, p_eq_new, float(new_supply[0])],
-                fill="toself",
-                mode="none",
-                fillcolor="rgba(255, 165, 0, 0.2)",
-                name="Producer Surplus",
-            )
-        )
+        fig2.add_trace(go.Scatter(x=quantity, y=new_demand, mode="lines", name="New Demand", line=dict(color=cbc_blue)))
+        fig2.add_trace(go.Scatter(x=quantity, y=new_supply, mode="lines", name="New Supply", line=dict(color=cbc_orange)))
 
-        fig2.update_layout(title="New Market After Shock", xaxis_title="Quantity", yaxis_title="Price", template="simple_white", yaxis=dict(range=[0, max_price]))
+        add_price_line(fig2, Pbar, qmax)
+
+        add_point(fig2, *pts_new["eq"], "New Equilibrium", symbol="diamond", size=11, color=cbc_gold)
+        add_point(fig2, pts_new["d_y"][0], pts_new["d_y"][1], "New demand y-intercept", symbol="circle", size=8, color=cbc_blue)
+        add_point(fig2, pts_new["s_y"][0], pts_new["s_y"][1], "New supply y-intercept", symbol="circle", size=8, color=cbc_orange)
+
+        dxq2, dxp2 = pts_new["d_x"]
+        sxq2, sxp2 = pts_new["s_x"]
+        add_point(fig2, clip_nonneg(dxq2), dxp2, "New demand x-intercept", symbol="x", size=10, color=cbc_blue)
+        add_point(fig2, clip_nonneg(sxq2), sxp2, "New supply x-intercept", symbol="x", size=10, color=cbc_orange)
+
+        add_point(fig2, pts_new["d_qp"][0], pts_new["d_qp"][1], "New demand @ selected price", symbol="triangle-up", size=10, color=cbc_blue)
+        add_point(fig2, pts_new["s_qp"][0], pts_new["s_qp"][1], "New supply @ selected price", symbol="triangle-up", size=10, color=cbc_orange)
+
+        fig2.update_layout(
+            title="Market After Shocks",
+            xaxis_title="Quantity",
+            yaxis_title="Price",
+            template="simple_white",
+            xaxis=dict(range=[qmin, qmax]),
+            yaxis=dict(range=[pmin, pmax]),
+            legend=dict(orientation="h"),
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
-    st.markdown(f"**Initial Equilibrium:** Price = ${p_eq_init:.2f}, Quantity = {q_eq_init:.2f}")
-    st.markdown(f"**New Equilibrium:** Price = ${p_eq_new:.2f}, Quantity = {q_eq_new:.2f}")
+        qeq2, peq2 = pts_new["eq"]
+        st.markdown(
+            "**New reference points (P, Q):**\n"
+            f"- Equilibrium: P={fmt_1sig(peq2)}, Q={fmt_1sig(qeq2)}\n"
+            f"- Demand intercepts: y(P|Q=0)={fmt_1sig(pts_new['d_y'][1])}, x(Q|P=0)={fmt_1sig(clip_nonneg(dxq2))}\n"
+            f"- Supply intercepts: y(P|Q=0)={fmt_1sig(pts_new['s_y'][1])}, x(Q|P=0)={fmt_1sig(clip_nonneg(sxq2))}\n"
+            f"- At selected price P̄={fmt_1sig(Pbar)}: Qd={fmt_1sig(pts_new['d_qp'][0])}, Qs={fmt_1sig(pts_new['s_qp'][0])}"
+        )
 
+    # ----------------------------
+    # Bottom sliders: intercepts + slopes
+    # ----------------------------
+    st.markdown("---")
+    st.markdown("### Curve parameters (slopes & intercepts)")
+
+    b1, b2 = st.columns(2)
+    with b1:
+        st.session_state.sd_params["P0d"] = st.slider("Demand Intercept (P when Q=0)", 10, 120, int(P0d))
+        st.session_state.sd_params["sd"] = st.slider("Demand Slope (negative)", -12, -1, int(sd))
+    with b2:
+        st.session_state.sd_params["P0s"] = st.slider("Supply Intercept (P when Q=0)", 0, 120, int(P0s))
+        st.session_state.sd_params["ss"] = st.slider("Supply Slope (positive)", 1, 12, int(ss))
+
+    # ----------------------------
+    # Export summary
+    # ----------------------------
     df_market = pd.DataFrame(
         {
             "Scenario": ["Initial", "New"],
             "Equilibrium Price": [p_eq_init, p_eq_new],
             "Equilibrium Quantity": [q_eq_init, q_eq_new],
-            "Demand Shift": [0, demand_shift],
-            "Supply Shift": [0, supply_shift],
+            "Demand Shift (ΔQ)": [0, demand_shift],
+            "Supply Shift (ΔQ)": [0, supply_shift],
+            "Selected Price (P̄)": [Pbar, Pbar],
+            "Qd @ P̄": [pts_init["d_qp"][0], pts_new["d_qp"][0]],
+            "Qs @ P̄": [pts_init["s_qp"][0], pts_new["s_qp"][0]],
         }
     )
     export_csv_button("📥 Download Market Summary CSV", df_market, "supply_demand_shock")
@@ -1335,6 +1532,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
