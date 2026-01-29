@@ -1512,11 +1512,11 @@ if "params" not in st.session_state:
 # ----------------------------
 # Apply button (must come AFTER sliders)
 # ----------------------------
-if st.sidebar.button("➕ Add / Apply Curve"):
-    st.session_state.params["A"] = A_tmp
-    st.session_state.params["B"] = B_tmp
-    st.session_state.params["D"] = D_tmp
-    st.session_state.params["X3"] = X3_tmp
+#if st.sidebar.button("➕ Add / Apply Curve"):
+#    st.session_state.params["A"] = A_tmp
+#    st.session_state.params["B"] = B_tmp
+#    st.session_state.params["D"] = D_tmp
+#    st.session_state.params["X3"] = X3_tmp
     
 
 # Render selected page
@@ -1532,6 +1532,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
