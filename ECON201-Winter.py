@@ -1232,7 +1232,6 @@ def page_supply_demand_shock():
         q_cands += [xint(P0_, m_), q_at_p(P0_, m_, Pbar)]
     q_cands += [q0, q1]
     q_cands = [q for q in q_cands if q is not None and np.isfinite(q)]
-
     q_half = max(q_center - min(q_cands), max(q_cands) - q_center, 10.0) * 1.25
     qmin, qmax = max(0.0, q_center - q_half), min(220.0, q_center + q_half)
     if qmax - qmin < 20:
@@ -1257,43 +1256,44 @@ def page_supply_demand_shock():
 
     R0, R1 = ref(P0d, P0s), ref(P0d_n, P0s_n)
 
-    # ---------- plot styling fixes ----------
+    # ---------- plot styling fixes (TRY AGAIN) ----------
+    # Fix (1): Put legend BELOW plot, horizontal, and increase bottom margin so it won't collide with x-axis title.
+    # Also trim legend bloat: hide marker entries from legend (so legend is mostly curves + price line).
     def apply_layout(fig, title):
         fig.update_layout(
             title=title,
             template="simple_white",
             xaxis_title="Quantity",
             yaxis_title="Price",
-            xaxis=dict(range=[qmin, qmax], title_standoff=10),
-            yaxis=dict(range=[pmin, pmax], title_standoff=10),
-            # Fix (1): keep legend from colliding with x-axis label
-            margin=dict(l=55, r=20, t=60, b=85),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            xaxis=dict(range=[qmin, qmax]),
+            yaxis=dict(range=[pmin, pmax]),
+            margin=dict(l=55, r=20, t=60, b=125),
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="left", x=0),
         )
-        # Price line
-        fig.add_trace(
-            go.Scatter(
-                x=[qmin, qmax], y=[Pbar, Pbar],
-                mode="lines",
-                name="Selected Price",
-                line=dict(color="darkgreen", dash="dash"),
-            )
-        )
+        fig.add_trace(go.Scatter(x=[qmin, qmax], y=[Pbar, Pbar], mode="lines",
+                                 name="Selected Price", line=dict(color="darkgreen", dash="dash")))
 
-    # Fix (2): add Plotly-like icons in the *text* labels
-    icon = "📍"
+    # Fix (2): Use actual Plotly marker symbols in the TEXT labels (no emoji).
+    def sym_txt(sym):
+        return {"diamond": "◆", "circle": "●", "x": "✕", "triangle-up": "▲"}.get(sym, "•")
 
     figL = go.Figure()
     figL.add_trace(go.Scatter(x=Q, y=D0, mode="lines", name="Demand", line=dict(color=cbc_blue)))
     figL.add_trace(go.Scatter(x=Q, y=S0, mode="lines", name="Supply", line=dict(color=cbc_orange)))
     apply_layout(figL, "Initial Market")
-    add_pt(figL, *R0["eq"], f"{icon} Equilibrium", sym="diamond", sz=11, col=cbc_gold)
-    add_pt(figL, *R0["dy"], f"{icon} Demand y-int", sym="circle", sz=8, col=cbc_blue)
-    add_pt(figL, *R0["sy"], f"{icon} Supply y-int", sym="circle", sz=8, col=cbc_orange)
-    add_pt(figL, *R0["dx"], f"{icon} Demand x-int", sym="x", sz=10, col=cbc_blue)
-    add_pt(figL, *R0["sx"], f"{icon} Supply x-int", sym="x", sz=10, col=cbc_orange)
-    add_pt(figL, *R0["qd"], f"{icon} Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
-    add_pt(figL, *R0["qs"], f"{icon} Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+
+    add_pt(figL, *R0["eq"], "Equilibrium", sym="diamond", sz=11, col=cbc_gold)
+    add_pt(figL, *R0["dy"], "Demand y-int", sym="circle", sz=8, col=cbc_blue)
+    add_pt(figL, *R0["sy"], "Supply y-int", sym="circle", sz=8, col=cbc_orange)
+    add_pt(figL, *R0["dx"], "Demand x-int", sym="x", sz=10, col=cbc_blue)
+    add_pt(figL, *R0["sx"], "Supply x-int", sym="x", sz=10, col=cbc_orange)
+    add_pt(figL, *R0["qd"], "Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
+    add_pt(figL, *R0["qs"], "Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+
+    # Hide marker traces from legend to reduce crowding (legend should be curves + price line)
+    for tr in figL.data:
+        if getattr(tr, "mode", "") == "markers":
+            tr.showlegend = False
 
     figR = go.Figure()
     if show_init:
@@ -1302,13 +1302,18 @@ def page_supply_demand_shock():
     figR.add_trace(go.Scatter(x=Q, y=D1, mode="lines", name="New Demand", line=dict(color=cbc_blue)))
     figR.add_trace(go.Scatter(x=Q, y=S1, mode="lines", name="New Supply", line=dict(color=cbc_orange)))
     apply_layout(figR, "Market After Shocks")
-    add_pt(figR, *R1["eq"], f"{icon} New Equilibrium", sym="diamond", sz=11, col=cbc_gold)
-    add_pt(figR, *R1["dy"], f"{icon} New demand y-int", sym="circle", sz=8, col=cbc_blue)
-    add_pt(figR, *R1["sy"], f"{icon} New supply y-int", sym="circle", sz=8, col=cbc_orange)
-    add_pt(figR, *R1["dx"], f"{icon} New demand x-int", sym="x", sz=10, col=cbc_blue)
-    add_pt(figR, *R1["sx"], f"{icon} New supply x-int", sym="x", sz=10, col=cbc_orange)
-    add_pt(figR, *R1["qd"], f"{icon} New Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
-    add_pt(figR, *R1["qs"], f"{icon} New Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+
+    add_pt(figR, *R1["eq"], "New Equilibrium", sym="diamond", sz=11, col=cbc_gold)
+    add_pt(figR, *R1["dy"], "New demand y-int", sym="circle", sz=8, col=cbc_blue)
+    add_pt(figR, *R1["sy"], "New supply y-int", sym="circle", sz=8, col=cbc_orange)
+    add_pt(figR, *R1["dx"], "New demand x-int", sym="x", sz=10, col=cbc_blue)
+    add_pt(figR, *R1["sx"], "New supply x-int", sym="x", sz=10, col=cbc_orange)
+    add_pt(figR, *R1["qd"], "New Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
+    add_pt(figR, *R1["qs"], "New Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+
+    for tr in figR.data:
+        if getattr(tr, "mode", "") == "markers":
+            tr.showlegend = False
 
     chartL.plotly_chart(figL, use_container_width=True)
     chartR.plotly_chart(figR, use_container_width=True)
@@ -1316,19 +1321,19 @@ def page_supply_demand_shock():
     qeq0, peq0 = R0["eq"]
     textL.markdown(
         "**Initial reference points (P, Q):**\n"
-        f"- {icon} Equilibrium: P={fmt(peq0)}, Q={fmt(qeq0)}\n"
-        f"- {icon} Demand intercepts: y={fmt(R0['dy'][1])}, x={fmt(R0['dx'][0])}\n"
-        f"- {icon} Supply intercepts: y={fmt(R0['sy'][1])}, x={fmt(R0['sx'][0])}\n"
-        f"- {icon} At selected price P̄={fmt(Pbar)}: Qd={fmt(R0['qd'][0])}, Qs={fmt(R0['qs'][0])}"
+        f"- {sym_txt('diamond')} Equilibrium: P={fmt(peq0)}, Q={fmt(qeq0)}\n"
+        f"- {sym_txt('circle')} Demand intercepts: y={fmt(R0['dy'][1])}, x={fmt(R0['dx'][0])}\n"
+        f"- {sym_txt('circle')} Supply intercepts: y={fmt(R0['sy'][1])}, x={fmt(R0['sx'][0])}\n"
+        f"- {sym_txt('triangle-up')} At selected price P̄={fmt(Pbar)}: Qd={fmt(R0['qd'][0])}, Qs={fmt(R0['qs'][0])}"
     )
 
     qeq1, peq1 = R1["eq"]
     textR.markdown(
         "**New reference points (P, Q):**\n"
-        f"- {icon} Equilibrium: P={fmt(peq1)}, Q={fmt(qeq1)}\n"
-        f"- {icon} Demand intercepts: y={fmt(R1['dy'][1])}, x={fmt(R1['dx'][0])}\n"
-        f"- {icon} Supply intercepts: y={fmt(R1['sy'][1])}, x={fmt(R1['sx'][0])}\n"
-        f"- {icon} At selected price P̄={fmt(Pbar)}: Qd={fmt(R1['qd'][0])}, Qs={fmt(R1['qs'][0])}"
+        f"- {sym_txt('diamond')} Equilibrium: P={fmt(peq1)}, Q={fmt(qeq1)}\n"
+        f"- {sym_txt('circle')} Demand intercepts: y={fmt(R1['dy'][1])}, x={fmt(R1['dx'][0])}\n"
+        f"- {sym_txt('circle')} Supply intercepts: y={fmt(R1['sy'][1])}, x={fmt(R1['sx'][0])}\n"
+        f"- {sym_txt('triangle-up')} At selected price P̄={fmt(Pbar)}: Qd={fmt(R1['qd'][0])}, Qs={fmt(R1['qs'][0])}"
     )
 
     df_market = pd.DataFrame(
@@ -1409,6 +1414,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
