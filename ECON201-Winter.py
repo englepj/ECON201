@@ -117,6 +117,260 @@ st.markdown(
 # Pages
 # ----------------------------
 
+import streamlit as st
+import numpy as np
+import plotly.graph_objects as go
+
+def page_supply_shock_elasticity():
+    st.markdown("## 📉 Supply Shock & Demand Elasticity (Supply-only)")
+
+    # ----------------------------
+    # Fixed scenario (can tweak these constants if you want)
+    # ----------------------------
+    P0 = 10.0     # initial equilibrium price
+    Q0 = 100.0    # initial equilibrium quantity
+
+    supply_slope = 8.0          # dQ/dP for supply
+    supply_shock = 5.0          # REQUIRED: fixed at 5 (rightward shift)
+
+    # CBC-ish colors (adjust hex if you have exact brand codes)
+    cbc_light_blue = "#7EC8FF"
+    cbc_yellow = "#F2C94C"
+    cbc_gold = "#C9A227"
+    cbc_blue = "#0B3D91"
+
+    # ----------------------------
+    # Controls (ONLY elasticity + point selection later)
+    # ----------------------------
+    e = st.slider(
+        "Select Price Elasticity of Demand at the initial equilibrium (PED)",
+        min_value=0.2, max_value=5.0, value=1.2, step=0.1
+    )
+
+    # ----------------------------
+    # Demand: constant-elasticity demand calibrated to pass through (P0,Q0)
+    # Q(P) = Q0 * (P/P0)^(-e)
+    # ----------------------------
+    def Qd(P):
+        P = np.asarray(P, dtype=float)
+        return Q0 * (P / P0) ** (-e)
+
+    # Supply: linear in price, calibrated so S0 hits (P0,Q0)
+    # Qs(P) = s_intercept + supply_slope * P
+    s_intercept = Q0 - supply_slope * P0
+    def Qs0(P):
+        return s_intercept + supply_slope * P
+
+    def Qs1(P):
+        return (s_intercept + supply_shock) + supply_slope * P
+
+    # ----------------------------
+    # Solve equilibria numerically (monotone functions => simple bisection)
+    # ----------------------------
+    def find_eq(Qs_func, P_low=0.5, P_high=200.0, iters=80):
+        lo, hi = P_low, P_high
+        for _ in range(iters):
+            mid = (lo + hi) / 2
+            f_lo = Qd(lo) - Qs_func(lo)
+            f_mid = Qd(mid) - Qs_func(mid)
+            if f_lo == 0:
+                lo = lo
+                break
+            if f_lo * f_mid <= 0:
+                hi = mid
+            else:
+                lo = mid
+        P_star = (lo + hi) / 2
+        Q_star = float(Qd(P_star))
+        return P_star, Q_star
+
+    P_eq0, Q_eq0 = find_eq(Qs0)
+    P_eq1, Q_eq1 = find_eq(Qs1)
+
+    # ----------------------------
+    # Graph ranges
+    # ----------------------------
+    P_grid = np.linspace(1, 30, 300)
+    Qd_grid = Qd(P_grid)
+    Qs0_grid = Qs0(P_grid)
+    Qs1_grid = Qs1(P_grid)
+
+    # For plotting in (Q on x, P on y), invert by using (Q(P), P)
+    def add_curve(fig, Q_vals, P_vals, name, color, dash="solid", width=3):
+        fig.add_trace(go.Scatter(
+            x=Q_vals, y=P_vals,
+            mode="lines",
+            name=name,
+            line=dict(color=color, dash=dash, width=width)
+        ))
+
+    def add_eq_point(fig, Q, P, name, color):
+        fig.add_trace(go.Scatter(
+            x=[Q], y=[P],
+            mode="markers+text",
+            name=name,
+            marker=dict(size=10, color=color),
+            text=[f"{name}<br>P={P:.2f}<br>Q={Q:.1f}"],
+            textposition="top right"
+        ))
+
+    # ----------------------------
+    # Graph 1: Market equilibrium before/after (Demand + both supplies)
+    # ----------------------------
+    fig1 = go.Figure()
+    add_curve(fig1, Qd_grid, P_grid, "Demand (D)", cbc_blue, "solid", 3)
+    add_curve(fig1, Qs0_grid, P_grid, "Supply (S0)", "#444444", "solid", 3)
+    add_curve(fig1, Qs1_grid, P_grid, "Supply after shock (S1 = S0 + 5)", cbc_gold, "dash", 3)
+
+    add_eq_point(fig1, Q_eq0, P_eq0, "E0", "#111111")
+    add_eq_point(fig1, Q_eq1, P_eq1, "E1", cbc_gold)
+
+    fig1.update_layout(
+        title="Market: Supply Shock (fixed +5) with Demand Elasticity",
+        xaxis_title="Quantity (Q)",
+        yaxis_title="Price (P)",
+        legend_title="Curves",
+        height=520
+    )
+    fig1.update_xaxes(rangemode="tozero")
+    fig1.update_yaxes(rangemode="tozero")
+
+    st.plotly_chart(fig1, use_container_width=True)
+
+    # ----------------------------
+    # Graph 2: Same curves + highlight changes (still includes both supplies)
+    # ----------------------------
+    dP = P_eq1 - P_eq0
+    dQ = Q_eq1 - Q_eq0
+
+    fig2 = go.Figure()
+    add_curve(fig2, Qd_grid, P_grid, "Demand (D)", cbc_blue, "solid", 3)
+    add_curve(fig2, Qs0_grid, P_grid, "Supply (S0)", "#444444", "solid", 3)
+    add_curve(fig2, Qs1_grid, P_grid, "Supply after shock (S1)", cbc_gold, "dash", 3)
+
+    # Add arrows/lines for change
+    fig2.add_trace(go.Scatter(
+        x=[Q_eq0, Q_eq1], y=[P_eq0, P_eq1],
+        mode="lines+markers",
+        name="Equilibrium shift",
+        line=dict(width=2),
+        marker=dict(size=8)
+    ))
+
+    fig2.add_annotation(
+        x=Q_eq1, y=P_eq1,
+        text=f"ΔP = {dP:+.2f}<br>ΔQ = {dQ:+.1f}",
+        showarrow=True, arrowhead=2, ax=40, ay=-40
+    )
+
+    fig2.update_layout(
+        title="Before vs After: Equilibrium Movement",
+        xaxis_title="Quantity (Q)",
+        yaxis_title="Price (P)",
+        height=520
+    )
+    fig2.update_xaxes(rangemode="tozero")
+    fig2.update_yaxes(rangemode="tozero")
+
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # ----------------------------
+    # Graph 3: Demand-only + choose two points + compute PED + shade revenue boxes
+    # ----------------------------
+    st.markdown("### 📌 Demand Elasticity Calculator (Pick Two Points)")
+
+    # choose prices (two points). Using prices avoids needing to click.
+    colA, colB = st.columns(2)
+    with colA:
+        P1 = st.slider("Point 1: Price (P₁)", 1.0, 30.0, float(np.clip(P_eq0, 1, 30)), 0.5)
+    with colB:
+        P2 = st.slider("Point 2: Price (P₂)", 1.0, 30.0, float(np.clip(P_eq1, 1, 30)), 0.5)
+
+    Q1 = float(Qd(P1))
+    Q2 = float(Qd(P2))
+
+    # Arc elasticity: PED = (ΔQ / avgQ) / (ΔP / avgP)
+    # (Typically negative; we also show absolute value)
+    avgQ = (Q1 + Q2) / 2
+    avgP = (P1 + P2) / 2
+    dQ_pts = (Q2 - Q1)
+    dP_pts = (P2 - P1)
+
+    if abs(dP_pts) < 1e-9:
+        ped_arc = np.nan
+    else:
+        ped_arc = (dQ_pts / avgQ) / (dP_pts / avgP)
+
+    fig3 = go.Figure()
+    add_curve(fig3, Qd_grid, P_grid, "Demand (D)", cbc_blue, "solid", 3)
+
+    # Revenue rectangles (TR = P*Q) at each selected point
+    # Draw as rectangles from (0,0) to (Q,P)
+    fig3.add_shape(
+        type="rect",
+        x0=0, y0=0, x1=Q1, y1=P1,
+        fillcolor=cbc_light_blue, opacity=0.25, line_width=0
+    )
+    fig3.add_shape(
+        type="rect",
+        x0=0, y0=0, x1=Q2, y1=P2,
+        fillcolor=cbc_yellow, opacity=0.25, line_width=0
+    )
+
+    # Point markers
+    fig3.add_trace(go.Scatter(
+        x=[Q1], y=[P1],
+        mode="markers+text",
+        name="Point 1",
+        marker=dict(size=10, color=cbc_light_blue),
+        text=[f"P₁={P1:.2f}<br>Q₁={Q1:.1f}<br>TR₁={P1*Q1:,.0f}"],
+        textposition="top right"
+    ))
+    fig3.add_trace(go.Scatter(
+        x=[Q2], y=[P2],
+        mode="markers+text",
+        name="Point 2",
+        marker=dict(size=10, color=cbc_yellow),
+        text=[f"P₂={P2:.2f}<br>Q₂={Q2:.1f}<br>TR₂={P2*Q2:,.0f}"],
+        textposition="bottom right"
+    ))
+
+    fig3.update_layout(
+        title="Demand Only: Pick Two Points, Compute PED, and Compare Revenue Boxes",
+        xaxis_title="Quantity (Q)",
+        yaxis_title="Price (P)",
+        height=560
+    )
+    fig3.update_xaxes(rangemode="tozero")
+    fig3.update_yaxes(rangemode="tozero")
+
+    st.plotly_chart(fig3, use_container_width=True)
+
+    # Annotation text below graph (PED calc)
+    if np.isnan(ped_arc):
+        st.warning("PED is undefined because P₁ and P₂ are the same (ΔP = 0).")
+    else:
+        st.markdown("**Arc Price Elasticity of Demand (between the two points):**")
+        st.latex(r"PED \;=\; \frac{\Delta Q / \overline{Q}}{\Delta P / \overline{P}}")
+        st.write(
+            f"ΔQ = {Q2:.2f} − {Q1:.2f} = **{dQ_pts:.2f}**  |  "
+            f"Q̄ = ({Q1:.2f} + {Q2:.2f})/2 = **{avgQ:.2f}**"
+        )
+        st.write(
+            f"ΔP = {P2:.2f} − {P1:.2f} = **{dP_pts:.2f}**  |  "
+            f"P̄ = ({P1:.2f} + {P2:.2f})/2 = **{avgP:.2f}**"
+        )
+        st.write(f"PED = **{ped_arc:.3f}**  (|PED| = **{abs(ped_arc):.3f}**)")
+
+    # Quick readouts
+    with st.expander("Show equilibrium summary"):
+        st.write(f"Initial equilibrium (E0): P = {P_eq0:.2f}, Q = {Q_eq0:.1f}")
+        st.write(f"After supply shock (E1): P = {P_eq1:.2f}, Q = {Q_eq1:.1f}")
+        st.write(f"Supply shock fixed at: +{supply_shock} units (right shift)")
+
+
+
+
 def page_price_setting_marginal_revenue_game():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 🏷️ Price-Setting Game: Demand, Total Revenue, and Marginal Revenue")
@@ -1365,6 +1619,7 @@ pages = {
     "Marginal Utility & Demand": page_marginal_utility_demand,
     "Cost Curve Explorer": page_cost_curve_explorer,
     "Supply & Demand Shock": page_supply_demand_shock,
+    "Supply Shock and Demand Elasticity": page_supply_shock_elasticity,
     "Marginal Revenue": page_price_setting_marginal_revenue_game,
 }
 
@@ -1414,6 +1669,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
