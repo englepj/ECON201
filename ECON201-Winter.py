@@ -1162,10 +1162,10 @@ def page_supply_demand_shock():
     st.write("Explore shifts in supply/demand and visualize ceilings/floors with a chosen price line.")
 
     # ---------- helpers (condensed) ----------
-    def fmt(x):  # no scientific notation
+    def fmt(x):
         if x is None or (isinstance(x, (int, float)) and (np.isnan(x) or np.isinf(x))):
             return "N/A"
-        return f"{float(x):.1f}"
+        return f"{float(x):.1f}"  # no scientific notation
 
     def eq(P0d, sd, P0s, ss):
         den = sd - ss
@@ -1175,14 +1175,9 @@ def page_supply_demand_shock():
         P = P0d + sd * Q
         return (Q, P) if (np.isfinite(Q) and np.isfinite(P)) else (None, None)
 
-    def xint(P0, m):
-        return None if m == 0 else -P0 / m
-
-    def q_at_p(P0, m, Pbar):
-        return None if m == 0 else (Pbar - P0) / m
-
-    def clipq(q):
-        return None if (q is None or (not np.isfinite(q)) or q < 0) else float(q)
+    def xint(P0, m): return None if m == 0 else -P0 / m
+    def q_at_p(P0, m, Pbar): return None if m == 0 else (Pbar - P0) / m
+    def clipq(q): return None if (q is None or (not np.isfinite(q)) or q < 0) else float(q)
 
     def add_pt(fig, q, p, name, sym="circle", sz=9, col=cbc_gold):
         if q is None or p is None or (not np.isfinite(q)) or (not np.isfinite(p)) or q < 0:
@@ -1200,17 +1195,16 @@ def page_supply_demand_shock():
             show_init = st.checkbox("Show initial curves on shock chart", True, key="sd_show_init")
         pbar_slot = c2.empty()
 
-    # ---------- chart placeholders (so slopes/intercepts BELOW can still drive charts) ----------
+    # ---------- chart placeholders ----------
     colL, colR = st.columns(2)
     with colL:
         chartL, textL = st.empty(), st.empty()
     with colR:
         chartR, textR = st.empty(), st.empty()
 
-    # ---------- bottom sliders (THESE must be the ones that drive the math) ----------
+    # ---------- bottom sliders ----------
     st.markdown("---")
     st.markdown("### Curve parameters (slopes & intercepts)")
-
     b1, b2 = st.columns(2)
     with b1:
         P0d = float(st.slider("Demand Intercept (P when Q=0)", 10, 120, 60, key="sd_P0d"))
@@ -1219,19 +1213,17 @@ def page_supply_demand_shock():
         P0s = float(st.slider("Supply Intercept (P when Q=0)", 0, 120, 20, key="sd_P0s"))
         ss = float(st.slider("Supply Slope (positive)", 1, 12, 5, key="sd_ss"))
 
-    # ---------- compute with current sliders ----------
-    # Horizontal shocks: P = P0 + m*(Q - shift) => new intercept is P0 - m*shift
+    # ---------- compute ----------
     P0d_n, P0s_n = P0d - sd * d_shift, P0s - ss * s_shift
     q0, p0 = eq(P0d, sd, P0s, ss)
     q1, p1 = eq(P0d_n, sd, P0s_n, ss)
 
-    # Price selector shown at top, default to new equilibrium ONCE (don’t override user afterwards)
     default_pbar = int(np.clip(round(p1), 0, 120)) if (p1 is not None and np.isfinite(p1)) else 40
     if "sd_Pbar" not in st.session_state:
         st.session_state.sd_Pbar = default_pbar
     Pbar = float(pbar_slot.slider("Selected Price (P̄) — ceiling/floor reference", 0, 120, int(st.session_state.sd_Pbar), key="sd_Pbar"))
 
-    # ---------- shared axes + “center equilibria” ----------
+    # shared axes + center equilibria
     q_center = float(np.mean([q for q in [q0, q1] if q is not None and np.isfinite(q)])) if any(q is not None for q in [q0, q1]) else 25.0
     p_center = float(np.mean([p for p in [p0, p1] if p is not None and np.isfinite(p)])) if any(p is not None for p in [p0, p1]) else float(Pbar)
 
@@ -1257,38 +1249,51 @@ def page_supply_demand_shock():
     if pmax - pmin < 10:
         pmax = min(220.0, pmin + 10.0)
 
-    # ---------- reference points ----------
     def ref(P0d_, P0s_):
         qeq, peq = eq(P0d_, sd, P0s_, ss)
-        dy, sy = (0.0, P0d_), (0.0, P0s_)
         dx, sx = clipq(xint(P0d_, sd)), clipq(xint(P0s_, ss))
         qd, qs = clipq(q_at_p(P0d_, sd, Pbar)), clipq(q_at_p(P0s_, ss, Pbar))
-        return {"eq": (clipq(qeq), peq), "dy": dy, "sy": sy, "dx": (dx, 0.0), "sx": (sx, 0.0), "qd": (qd, Pbar), "qs": (qs, Pbar)}
+        return {"eq": (clipq(qeq), peq), "dy": (0.0, P0d_), "sy": (0.0, P0s_), "dx": (dx, 0.0), "sx": (sx, 0.0), "qd": (qd, Pbar), "qs": (qs, Pbar)}
 
     R0, R1 = ref(P0d, P0s), ref(P0d_n, P0s_n)
 
-    # ---------- charts (render into placeholders so layout stays top->charts->bottom sliders) ----------
-    def base_layout(fig, title):
+    # ---------- plot styling fixes ----------
+    def apply_layout(fig, title):
         fig.update_layout(
-            title=title, template="simple_white",
-            xaxis_title="Quantity", yaxis_title="Price",
-            xaxis=dict(range=[qmin, qmax]), yaxis=dict(range=[pmin, pmax]),
-            legend=dict(orientation="h"),
+            title=title,
+            template="simple_white",
+            xaxis_title="Quantity",
+            yaxis_title="Price",
+            xaxis=dict(range=[qmin, qmax], title_standoff=10),
+            yaxis=dict(range=[pmin, pmax], title_standoff=10),
+            # Fix (1): keep legend from colliding with x-axis label
+            margin=dict(l=55, r=20, t=60, b=85),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         )
-        fig.add_trace(go.Scatter(x=[qmin, qmax], y=[Pbar, Pbar], mode="lines", name="Selected Price",
-                                 line=dict(color="darkgreen", dash="dash")))
+        # Price line
+        fig.add_trace(
+            go.Scatter(
+                x=[qmin, qmax], y=[Pbar, Pbar],
+                mode="lines",
+                name="Selected Price",
+                line=dict(color="darkgreen", dash="dash"),
+            )
+        )
+
+    # Fix (2): add Plotly-like icons in the *text* labels
+    icon = "📍"
 
     figL = go.Figure()
     figL.add_trace(go.Scatter(x=Q, y=D0, mode="lines", name="Demand", line=dict(color=cbc_blue)))
     figL.add_trace(go.Scatter(x=Q, y=S0, mode="lines", name="Supply", line=dict(color=cbc_orange)))
-    base_layout(figL, "Initial Market")
-    add_pt(figL, *R0["eq"], "Equilibrium", sym="diamond", sz=11, col=cbc_gold)
-    add_pt(figL, *R0["dy"], "Demand y-int", sym="circle", sz=8, col=cbc_blue)
-    add_pt(figL, *R0["sy"], "Supply y-int", sym="circle", sz=8, col=cbc_orange)
-    add_pt(figL, *R0["dx"], "Demand x-int", sym="x", sz=10, col=cbc_blue)
-    add_pt(figL, *R0["sx"], "Supply x-int", sym="x", sz=10, col=cbc_orange)
-    add_pt(figL, *R0["qd"], "Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
-    add_pt(figL, *R0["qs"], "Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+    apply_layout(figL, "Initial Market")
+    add_pt(figL, *R0["eq"], f"{icon} Equilibrium", sym="diamond", sz=11, col=cbc_gold)
+    add_pt(figL, *R0["dy"], f"{icon} Demand y-int", sym="circle", sz=8, col=cbc_blue)
+    add_pt(figL, *R0["sy"], f"{icon} Supply y-int", sym="circle", sz=8, col=cbc_orange)
+    add_pt(figL, *R0["dx"], f"{icon} Demand x-int", sym="x", sz=10, col=cbc_blue)
+    add_pt(figL, *R0["sx"], f"{icon} Supply x-int", sym="x", sz=10, col=cbc_orange)
+    add_pt(figL, *R0["qd"], f"{icon} Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
+    add_pt(figL, *R0["qs"], f"{icon} Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
 
     figR = go.Figure()
     if show_init:
@@ -1296,14 +1301,14 @@ def page_supply_demand_shock():
         figR.add_trace(go.Scatter(x=Q, y=S0, mode="lines", name="Initial Supply", line=dict(color=cbc_orange, dash="dash")))
     figR.add_trace(go.Scatter(x=Q, y=D1, mode="lines", name="New Demand", line=dict(color=cbc_blue)))
     figR.add_trace(go.Scatter(x=Q, y=S1, mode="lines", name="New Supply", line=dict(color=cbc_orange)))
-    base_layout(figR, "Market After Shocks")
-    add_pt(figR, *R1["eq"], "New Equilibrium", sym="diamond", sz=11, col=cbc_gold)
-    add_pt(figR, *R1["dy"], "New demand y-int", sym="circle", sz=8, col=cbc_blue)
-    add_pt(figR, *R1["sy"], "New supply y-int", sym="circle", sz=8, col=cbc_orange)
-    add_pt(figR, *R1["dx"], "New demand x-int", sym="x", sz=10, col=cbc_blue)
-    add_pt(figR, *R1["sx"], "New supply x-int", sym="x", sz=10, col=cbc_orange)
-    add_pt(figR, *R1["qd"], "New Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
-    add_pt(figR, *R1["qs"], "New Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
+    apply_layout(figR, "Market After Shocks")
+    add_pt(figR, *R1["eq"], f"{icon} New Equilibrium", sym="diamond", sz=11, col=cbc_gold)
+    add_pt(figR, *R1["dy"], f"{icon} New demand y-int", sym="circle", sz=8, col=cbc_blue)
+    add_pt(figR, *R1["sy"], f"{icon} New supply y-int", sym="circle", sz=8, col=cbc_orange)
+    add_pt(figR, *R1["dx"], f"{icon} New demand x-int", sym="x", sz=10, col=cbc_blue)
+    add_pt(figR, *R1["sx"], f"{icon} New supply x-int", sym="x", sz=10, col=cbc_orange)
+    add_pt(figR, *R1["qd"], f"{icon} New Qd @ P̄", sym="triangle-up", sz=10, col=cbc_blue)
+    add_pt(figR, *R1["qs"], f"{icon} New Qs @ P̄", sym="triangle-up", sz=10, col=cbc_orange)
 
     chartL.plotly_chart(figL, use_container_width=True)
     chartR.plotly_chart(figR, use_container_width=True)
@@ -1311,22 +1316,21 @@ def page_supply_demand_shock():
     qeq0, peq0 = R0["eq"]
     textL.markdown(
         "**Initial reference points (P, Q):**\n"
-        f"- Equilibrium: P={fmt(peq0)}, Q={fmt(qeq0)}\n"
-        f"- Demand intercepts: y={fmt(R0['dy'][1])}, x={fmt(R0['dx'][0])}\n"
-        f"- Supply intercepts: y={fmt(R0['sy'][1])}, x={fmt(R0['sx'][0])}\n"
-        f"- At selected price P̄={fmt(Pbar)}: Qd={fmt(R0['qd'][0])}, Qs={fmt(R0['qs'][0])}"
+        f"- {icon} Equilibrium: P={fmt(peq0)}, Q={fmt(qeq0)}\n"
+        f"- {icon} Demand intercepts: y={fmt(R0['dy'][1])}, x={fmt(R0['dx'][0])}\n"
+        f"- {icon} Supply intercepts: y={fmt(R0['sy'][1])}, x={fmt(R0['sx'][0])}\n"
+        f"- {icon} At selected price P̄={fmt(Pbar)}: Qd={fmt(R0['qd'][0])}, Qs={fmt(R0['qs'][0])}"
     )
 
     qeq1, peq1 = R1["eq"]
     textR.markdown(
         "**New reference points (P, Q):**\n"
-        f"- Equilibrium: P={fmt(peq1)}, Q={fmt(qeq1)}\n"
-        f"- Demand intercepts: y={fmt(R1['dy'][1])}, x={fmt(R1['dx'][0])}\n"
-        f"- Supply intercepts: y={fmt(R1['sy'][1])}, x={fmt(R1['sx'][0])}\n"
-        f"- At selected price P̄={fmt(Pbar)}: Qd={fmt(R1['qd'][0])}, Qs={fmt(R1['qs'][0])}"
+        f"- {icon} Equilibrium: P={fmt(peq1)}, Q={fmt(qeq1)}\n"
+        f"- {icon} Demand intercepts: y={fmt(R1['dy'][1])}, x={fmt(R1['dx'][0])}\n"
+        f"- {icon} Supply intercepts: y={fmt(R1['sy'][1])}, x={fmt(R1['sx'][0])}\n"
+        f"- {icon} At selected price P̄={fmt(Pbar)}: Qd={fmt(R1['qd'][0])}, Qs={fmt(R1['qs'][0])}"
     )
 
-    # ---------- export ----------
     df_market = pd.DataFrame(
         {
             "Scenario": ["Initial", "New"],
@@ -1340,7 +1344,6 @@ def page_supply_demand_shock():
         }
     )
     export_csv_button("📥 Download Market Summary CSV", df_market, "supply_demand_shock")
-
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1406,6 +1409,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
