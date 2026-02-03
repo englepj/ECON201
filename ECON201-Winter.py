@@ -126,7 +126,7 @@ def page_supply_shock_elasticity():
 
     # --- Scenario constants ---
     P0, Q0 = 10.0, 100.0
-    supply_slope, supply_shock = 8.0, 50.0  # shock fixed at +5 (right shift)
+    supply_slope, supply_shock = 8.0, 50.0  # shock fixed at +50 (right shift)
 
     # --- CBC-ish colors ---
     cbc_light_blue, cbc_yellow = "#7EC8FF", "#F2C94C"
@@ -172,11 +172,11 @@ def page_supply_shock_elasticity():
     fig1 = go.Figure()
     add_curve(fig1, Qd_grid, P_grid, "Demand (linear)", cbc_blue)
     add_curve(fig1, Qs0_grid, P_grid, "Supply (S0)", "#444444")
-    add_curve(fig1, Qs1_grid, P_grid, "Supply after shock (S1 = S0 + 5)", cbc_gold, "dash")
+    add_curve(fig1, Qs1_grid, P_grid, "Supply after shock (S1 = S0 + 50)", cbc_gold, "dash")
     add_eq(fig1, Q_eq0, P_eq0, "E0", "#111111")
     add_eq(fig1, Q_eq1, P_eq1, "E1", cbc_gold)
     fig1.update_layout(
-        title="Market: Supply Shock (+5) with Linear Demand (calibrated to |PED| at P0,Q0)",
+        title="Market: Supply Shock (+50) with Linear Demand (calibrated to |PED| at P0,Q0)",
         xaxis_title="Quantity (Q)", yaxis_title="Price (P)", legend_title="Curves", height=520
     )
     fig1.update_xaxes(rangemode="tozero")
@@ -1560,6 +1560,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
