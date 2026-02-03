@@ -262,7 +262,6 @@ def page_supply_shock_elasticity():
         st.write("Note: With linear demand, elasticity varies by point; the slider calibrates |PED| specifically at (P0,Q0).")
 
 
-
 def page_price_setting_marginal_revenue_game():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 🏷️ Price-Setting Game: Demand, Total Revenue, and Marginal Revenue")
@@ -1561,6 +1560,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
