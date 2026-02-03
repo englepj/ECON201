@@ -126,7 +126,7 @@ def page_supply_shock_elasticity():
 
     # --- Scenario constants ---
     P0, Q0 = 10.0, 100.0
-    supply_slope, supply_shock = 8.0, 5.0  # shock fixed at +5 (right shift)
+    supply_slope, supply_shock = 8.0, 50.0  # shock fixed at +5 (right shift)
 
     # --- CBC-ish colors ---
     cbc_light_blue, cbc_yellow = "#7EC8FF", "#F2C94C"
@@ -1560,6 +1560,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
