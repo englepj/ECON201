@@ -262,183 +262,120 @@ def page_supply_shock_elasticity():
         st.write("Note: With linear demand, elasticity varies by point; the slider calibrates |PED| specifically at (P0,Q0).")
 
 
-def page_price_setting_marginal_revenue_game():
+def page_market_power_cost_revenue_builder():
+    import numpy as np, pandas as pd, streamlit as st
+    import plotly.graph_objects as go
+
+    # Colors (use your globals if present)
+    try: OR, BL, GD, GR = cbc_darkorange, cbc_blue, cbc_gold, cbc_gray
+    except Exception: OR, BL, GD, GR = "#F28E2B", "#4E79A7", "#EDC948", "#8C8C8C"
+
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-    st.markdown("## 🏷️ Price-Setting Game: Demand, Total Revenue, and Marginal Revenue")
+    st.markdown("## 🏛️ Market Power Builder: TC, MC, TR, MR, Profit")
+    st.write("Build curves with sliders. We compute **TC, MC, TR, MR, Profit** for **price-taking** and **price-making**, and draw **4 graphs**.")
 
-    st.write(
-        "You are a company with **price-setting ability**. Each round, you choose a price. "
-        "The market responds with a quantity demanded. We track **Total Revenue (TR)** and **Marginal Revenue (MR)**."
-    )
+    # -------- sliders (kept compact) --------
+    a,b,c = st.columns(3)
+    with a:
+        FC  = st.slider("Fixed Cost (FC)", 0, 300, 60, 5)
+        mc0 = st.slider("MC base", 0, 80, 5, 1)
+        mc1 = st.slider("MC slope", 0.0, 20.0, 4.0, 0.5)
+        mc2 = st.slider("MC curvature", 0.0, 5.0, 0.8, 0.1)
+    with b:
+        P = st.slider("Price-taker market price (P = MR)", 5, 150, 75, 1)
+    with c:
+        Pmax  = st.slider("Demand intercept (P at Q=0)", 50, 350, 250, 5)
+        slope = st.slider("Demand slope (ΔP per +1 Q)", 1, 60, 25, 1)
 
-    # ----------------------------
-    # Session State
-    # ----------------------------
-    st.session_state.setdefault("mr_game_history", [])
-    st.session_state.setdefault("mr_game_best_tr", None)  # store dict row
+    Q = np.arange(1, 11)
 
-    # ----------------------------
-    # Demand Setup (Linear Demand)
-    # Q = max(0, A - B*P)
-    # ----------------------------
-    st.markdown("### ⚙️ Market Demand Settings")
-    colA, colB, colC = st.columns(3)
-    with colA:
-        A = st.slider("Demand intercept A (max Q when P=0)", 10, 200, 80, step=5)
-    with colB:
-        B = st.slider("Demand slope B (how fast Q falls as P rises)", 1, 10, 2, step=1)
-    with colC:
-        max_price = st.slider("Max price students can set", 5, 100, 40, step=1)
+    # -------- schedules --------
+    MC = mc0 + mc1*Q + mc2*(Q**2)
+    TC = FC + np.cumsum(MC)
+    TRc, PROFc = P*Q, P*Q - TC                       # price-taker
+    Pd = np.maximum(0, Pmax - slope*Q)               # demand price schedule
+    TRm, MRm = Pd*Q, (Pmax - 2*slope*Q)              # price-maker (linear demand MR)
+    PROFm = TRm - TC
 
-    def quantity_demanded(price: float) -> int:
-        q = A - B * price
-        return int(max(0, round(q)))
+    # -------- table --------
+    st.divider(); st.markdown("### 🧾 Table")
+    df = pd.DataFrame({
+        "Q": Q,
+        "Total Cost (TC)": TC.round().astype(int),
+        "Marginal Cost (MC)": MC.round().astype(int),
+        "Price-Taking TR": TRc.round().astype(int),
+        "Price-Taking Profit": PROFc.round().astype(int),
+        "Price-Maker Price (Demand P)": Pd.round().astype(int),
+        "Total Price-Maker Revenue (TR)": TRm.round().astype(int),
+        "Marginal Revenue (MR)": MRm.round().astype(int),
+        "Price-Making Profit": PROFm.round().astype(int),
+    })
+    st.dataframe(df, use_container_width=True)
+    try: export_csv_button("📥 Download Table CSV", df, "market_power_table")
+    except Exception: pass
 
-    st.divider()
+    # -------- plot helper (currency + whole numbers in hover) --------
+    def add_line(fig, x, y, name, color, yfmt="$%{y:,.0f}", extra=None):
+        ht = f"Q=%{{x:d}}<br>{name}={yfmt}<extra></extra>"
+        if extra: ht = extra
+        fig.add_trace(go.Scatter(
+            x=x, y=y, mode="lines+markers", name=name, line=dict(color=color),
+            hovertemplate=ht
+        ))
 
-    # ----------------------------
-    # Controls (Game Round)
-    # ----------------------------
-    st.markdown("### 🎮 Play a Round")
-    col1, col2, col3 = st.columns([1.2, 1.2, 2.6])
-    with col1:
-        price = st.slider("Set your price ($)", 0, max_price, int(max_price * 0.5), step=1)
-    with col2:
-        if st.button("✅ Submit Round"):
-            q = quantity_demanded(price)
-            tr = price * q
+    def layout(fig, title, ytitle):
+        fig.update_layout(
+            title=title, template="simple_white",
+            xaxis_title="Quantity (Q)", yaxis_title=ytitle,
+            xaxis=dict(dtick=1),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="left", x=0),
+            margin=dict(t=60, b=80, l=50, r=20),
+        )
 
-            # MR is ΔTR/ΔQ between this round and previous round (if any)
-            if st.session_state.mr_game_history:
-                prev = st.session_state.mr_game_history[-1]
-                dq = q - prev["Q"]
-                dtr = tr - prev["TR"]
-                mr = None if dq == 0 else dtr / dq
-            else:
-                mr = None  # undefined on first round
-
-            row = {
-                "Round": len(st.session_state.mr_game_history) + 1,
-                "P": float(price),
-                "Q": int(q),
-                "TR": float(tr),
-                "MR (ΔTR/ΔQ)": None if mr is None else float(mr),
-            }
-            st.session_state.mr_game_history.append(row)
-
-            # Track best TR
-            best = st.session_state.mr_game_best_tr
-            if (best is None) or (row["TR"] > best["TR"]):
-                st.session_state.mr_game_best_tr = row
-
-            st.success(f"Round added: Price ${price}, Quantity {q}, Total Revenue ${tr}")
-
-    with col3:
-        if st.button("🔄 Reset Game"):
-            st.session_state.mr_game_history = []
-            st.session_state.mr_game_best_tr = None
-            st.warning("Game reset.")
-
-    # ----------------------------
-    # Demand Curve + TR + MR Curves (theory view)
-    # ----------------------------
-    st.divider()
-    st.markdown("### 📉📈 Visuals: Demand, Total Revenue, and Marginal Revenue")
-
-    prices = np.arange(0, max_price + 1)
-    qs = np.array([quantity_demanded(p) for p in prices])
-    trs = prices * qs
-
-    # Approximate MR as discrete ΔTR/ΔQ stepping along the demand schedule as Q changes
-    # Build MR aligned to Q levels (when Q drops by 1 unit, MR is change in TR from q to q-1)
-    # We'll compute MR over unique Q values decreasing.
-    q_unique = np.unique(qs)[::-1]  # descending
-    mr_vals = []
-    q_for_mr = []
-    # For each q (except the smallest), find the max TR at that q and at next q-1
-    # Using the demand schedule mapping.
-    q_to_tr = {}
-    for p, q, tr in zip(prices, qs, trs):
-        # for each q, keep the highest TR observed (ties occur with rounding)
-        q_to_tr[q] = max(q_to_tr.get(q, -1), tr)
-
-    for i in range(len(q_unique) - 1):
-        q_now = int(q_unique[i])
-        q_next = int(q_unique[i + 1])
-        if q_now == q_next:
-            continue
-        tr_now = q_to_tr.get(q_now, None)
-        tr_next = q_to_tr.get(q_next, None)
-        if tr_now is None or tr_next is None:
-            continue
-        dq = q_next - q_now
-        dtr = tr_next - tr_now
-        mr_vals.append(dtr / dq)
-        q_for_mr.append(q_next)  # place MR at the "new" quantity level
-
-    g1, g2, g3 = st.columns(3)
+    st.divider(); st.markdown("### 📊 Graphs (1a, 1b, 2a, 2b)")
+    g1,g2 = st.columns(2); g3,g4 = st.columns(2)
 
     with g1:
-        fig_d = go.Figure()
-        fig_d.add_trace(go.Scatter(x=qs, y=prices, mode="lines", name="Demand (P vs Q)", line=dict(color=cbc_blue)))
-        fig_d.update_layout(
-            title="Demand Curve (Price vs Quantity)",
-            xaxis_title="Quantity (Q)",
-            yaxis_title="Price (P)",
-            template="simple_white",
-            yaxis=dict(range=[0, max_price]),
-        )
-        st.plotly_chart(fig_d, use_container_width=True)
+        f = go.Figure()
+        add_line(f, Q, TC, "Total Cost", OR)
+        add_line(f, Q, TRc, "Total Revenue", GR)
+        add_line(f, Q, PROFc, "Price-Taking Profit", GD, yfmt="$%{y:,.0f}")
+        layout(f, f"(1a) ${P} Price-Taking Profit = Total Revenue - Total Cost", "$")
+        st.plotly_chart(f, use_container_width=True)
 
     with g2:
-        fig_tr = go.Figure()
-        fig_tr.add_trace(go.Scatter(x=qs, y=trs, mode="lines", name="Total Revenue", line=dict(color=cbc_darkorange)))
-        fig_tr.update_layout(
-            title="Total Revenue (TR) vs Quantity",
-            xaxis_title="Quantity (Q)",
-            yaxis_title="Total Revenue (TR)",
-            template="simple_white",
-        )
-        st.plotly_chart(fig_tr, use_container_width=True)
+        f = go.Figure()
+        add_line(f, Q, np.full_like(Q, float(P)), f"Marginal Revenue taking price of ${P}", BL, yfmt="$%{y:,.0f}")
+        add_line(f, Q, MC, "Marginal Cost", OR, yfmt="$%{y:,.0f}")
+        layout(f, "(1b) Price-Taking Supply and Demand", "$ per unit")
+        st.plotly_chart(f, use_container_width=True)
 
     with g3:
-        fig_mr = go.Figure()
-        if len(q_for_mr) > 0:
-            fig_mr.add_trace(
-                go.Scatter(
-                    x=q_for_mr,
-                    y=mr_vals,
-                    mode="lines",
-                    name="Marginal Revenue (Approx)",
-                    line=dict(color=cbc_gold, shape="hv"),
-                )
-            )
-        fig_mr.update_layout(
-            title="Marginal Revenue (MR) vs Quantity (Step)",
-            xaxis_title="Quantity (Q)",
-            yaxis_title="Marginal Revenue (MR)",
-            template="simple_white",
-        )
-        st.plotly_chart(fig_mr, use_container_width=True)
+        f = go.Figure()
+        add_line(f, Q, TC, "Total Cost", OR)
+        add_line(f, Q, TRm, "Total Price-Maker Revenue", GR)
+        add_line(f, Q, PROFm, "Price-Making Profit", GD, yfmt="$%{y:,.0f}")
+        layout(f, "(2a) Price-Making Profit = Total Revenue - Total Cost", "$")
+        st.plotly_chart(f, use_container_width=True)
 
-    # ----------------------------
-    # History table + highlight best TR
-    # ----------------------------
-    st.divider()
-    st.markdown("### 🧾 Your Rounds (History)")
-    if st.session_state.mr_game_history:
-        hist_df = pd.DataFrame(st.session_state.mr_game_history)
+    with g4:
+        f = go.Figure()
+        add_line(f, Q, Pd, "Quantity Demanded (Demand)", BL, yfmt="$%{y:,.0f}")
+        add_line(f, Q, MC, "Marginal Cost", OR, yfmt="$%{y:,.0f}")
+        add_line(f, Q, MRm, "Marginal Revenue", GR, yfmt="$%{y:,.0f}")
+        layout(f, "(2b) Price-Making Supply and Demand", "$ per unit")
+        st.plotly_chart(f, use_container_width=True)
 
-        best = st.session_state.mr_game_best_tr
-        if best is not None:
-            st.info(f"🏆 Best Total Revenue so far: **${best['TR']:.0f}** at **P=${best['P']:.0f}**, **Q={best['Q']}**")
-
-        st.dataframe(hist_df, use_container_width=True)
-        export_csv_button("📥 Download MR Game History CSV", hist_df, "mr_game_history")
-    else:
-        st.info("No rounds yet. Choose a price and click **Submit Round**.")
+    # -------- key outputs (optional, compact) --------
+    st.divider(); st.markdown("### ✅ Key quantities (for questions)")
+    q_pt = int(Q[MC <= P].max()) if (MC <= P).any() else 0
+    q_pm = int(Q[(MRm >= MC)].max()) if (MRm >= MC).any() else 0
+    cL, cR = st.columns(2)
+    cL.metric("Perfect Competition: Q* (last unit with MC ≤ P)", q_pt)
+    cR.metric("Price-Maker: Q* (last unit with MR ≥ MC)", q_pm)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 def page_instructions():
@@ -1560,6 +1497,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
