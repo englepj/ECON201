@@ -123,272 +123,187 @@ import plotly.graph_objects as go
 
 
 def page_price_discrimination_segmentation():
-    import numpy as np, streamlit as st
-    import plotly.graph_objects as go
+    import numpy as np, streamlit as st, plotly.graph_objects as go
 
-    # ---------- colors (use yours if available) ----------
-    try:
-        BL, OR, GD, GR = cbc_blue, cbc_darkorange, cbc_gold, cbc_gray
-    except Exception:
-        BL, OR, GD, GR = "#4E79A7", "#F28E2B", "#EDC948", "#8C8C8C"
+    # ---- colors (use yours if present) ----
+    try: BL, OR, GD, GR = cbc_blue, cbc_darkorange, cbc_gold, cbc_gray
+    except Exception: BL, OR, GD, GR = "#4E79A7", "#F28E2B", "#EDC948", "#8C8C8C"
 
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 🏷️ Price Discrimination Builder (1st, 2nd, 3rd Degree)")
-    st.write(
-        "Customize **Elastic segment**, **Inelastic segment**, and **Whole market**. "
-        "Use the tabs to see how **1st, 2nd, and 3rd degree price discrimination** changes pricing logic."
-    )
+    st.write("Customize **Elastic segment**, **Inelastic segment**, and **Whole market**. Tabs show **1st, 2nd, 3rd degree PD** with clear, entry-level visuals.")
 
-    # ---------- compact helpers ----------
-    def q_of_p(P, A, B):  # inverse demand P= A - BQ  -> Q(P)
-        return np.maximum(0.0, (A - P) / B)
-
-    def mc_of_q(Q, mc0, mc1):
-        return mc0 + mc1 * Q
-
-    def find_q_star_linear(A, B, mc0, mc1, mode="monopoly"):
-        # Demand: P = A - BQ
-        # MC = mc0 + mc1 Q
-        # Monopoly: set MR = MC where MR = A - 2BQ
-        # Efficient/1st-degree benchmark: set P = MC
-        if mode == "monopoly":
-            denom = (2 * B + mc1)
-            return max(0.0, (A - mc0) / denom) if denom > 0 else 0.0
-        else:  # "efficient"
-            denom = (B + mc1)
-            return max(0.0, (A - mc0) / denom) if denom > 0 else 0.0
-
-    def hover_line(name, yfmt="$%{y:,.0f}"):
-        return f"Q=%{{x:.0f}}<br>{name}={yfmt}<extra></extra>"
-
-    def add(fig, x, y, name, color, yfmt="$%{y:,.0f}"):
-        fig.add_trace(go.Scatter(
-            x=x, y=y, mode="lines", name=name, line=dict(color=color),
-            hovertemplate=hover_line(name, yfmt)
-        ))
-
-    def add_point(fig, q, p, label, color):
+    # ---- compact plot helpers ----
+    hline = lambda n: f"Q=%{{x:.0f}}<br>{n}=$%{{y:,.0f}}<extra></extra>"
+    def add(fig, x, y, name, color, mode="lines"):
+        fig.add_trace(go.Scatter(x=x, y=y, mode=mode, name=name, line=dict(color=color), hovertemplate=hline(name)))
+    def point(fig, q, p, label, color):
         fig.add_trace(go.Scatter(
             x=[q], y=[p], mode="markers+text", text=[label], textposition="top right",
-            marker=dict(size=10, color=color),
-            hovertemplate=f"Q=%{{x:.0f}}<br>P=$%{{y:,.0f}}<extra></extra>",
-            showlegend=False
+            marker=dict(size=10, color=color), showlegend=False,
+            hovertemplate="Q=%{x:.0f}<br>P=$%{y:,.0f}<extra></extra>"
         ))
-
     def layout(fig, title):
         fig.update_layout(
             title=title, template="simple_white",
-            xaxis_title="Quantity (Q)", yaxis_title="Price / $ per unit",
+            xaxis_title="Quantity (Q)", yaxis_title="$ per unit",
             xaxis=dict(dtick=5, rangemode="tozero"),
             legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="left", x=0),
             margin=dict(t=60, b=80, l=50, r=20),
         )
 
-    # ---------- inputs ----------
-    st.markdown("### ⚙️ Customize segments + costs")
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        seg_inel = st.text_input("Inelastic segment label", "Last-minute / Business")
-        Ai = st.slider("Inelastic demand intercept Aᵢ (max WTP)", 50, 400, 300, 5)
-        Bi = st.slider("Inelastic slope Bᵢ (steeper = less elastic-ish)", 1, 80, 40, 1)
-
-    with c2:
-        seg_el = st.text_input("Elastic segment label", "Advance / Leisure")
-        Ae = st.slider("Elastic demand intercept Aₑ (max WTP)", 50, 400, 150, 5)
-        Be = st.slider("Elastic slope Bₑ (flatter = more elastic-ish)", 1, 80, 15, 1)
-
-    with c3:
-        st.markdown("**Costs**")
-        mc0 = st.slider("MC intercept (base marginal cost)", 0, 200, 70, 1)
-        mc1 = st.slider("MC slope (rising MC)", 0.0, 20.0, 0.0, 0.5)
-        Pmax = st.slider("Plot max price", 100, 500, 350, 10)
-
-    # price grid -> build Q(P) for each segment and whole market
-    Pgrid = np.linspace(0, Pmax, 401)
-    QiP, QeP = q_of_p(Pgrid, Ai, Bi), q_of_p(Pgrid, Ae, Be)
-    QtP = QiP + QeP
-
-    # build (Q,P) curves by sorting by Q (Plotly wants x monotonic-ish)
-    def qp_curve_from_pricegrid(P, Q):
+    # ---- math helpers ----
+    def curve_from_Pgrid(P, A, B):  # Demand: P=A-BQ -> Q(P)=(A-P)/B
+        Q = np.maximum(0.0, (A - P) / B)
         idx = np.argsort(Q)
         return Q[idx], P[idx]
+    mc = lambda q, mc0, mc1: mc0 + mc1*q
+    q_star = lambda A, B, mc0, mc1, kind: max(0.0, (A-mc0)/( (2*B if kind=="monopoly" else B) + mc1 )) if ((2*B if kind=="monopoly" else B)+mc1)>0 else 0.0
 
-    Qi_curve, Pi_curve = qp_curve_from_pricegrid(Pgrid, QiP)
-    Qe_curve, Pe_curve = qp_curve_from_pricegrid(Pgrid, QeP)
-    Qt_curve, Pt_curve = qp_curve_from_pricegrid(Pgrid, QtP)
+    # ---- inputs ----
+    st.markdown("### ⚙️ Customize segments + costs")
+    c1,c2,c3 = st.columns(3)
+    with c1:
+        lab_i = st.text_input("Inelastic segment label", "Last-minute / Business")
+        Ai = st.slider("Inelastic intercept Aᵢ", 50, 400, 300, 5)
+        Bi = st.slider("Inelastic slope Bᵢ", 1, 80, 40, 1)
+    with c2:
+        lab_e = st.text_input("Elastic segment label", "Advance / Leisure")
+        Ae = st.slider("Elastic intercept Aₑ", 50, 400, 150, 5)
+        Be = st.slider("Elastic slope Bₑ", 1, 80, 15, 1)
+    with c3:
+        mc0 = st.slider("MC intercept", 0, 200, 70, 1)
+        mc1 = st.slider("MC slope", 0.0, 20.0, 0.0, 0.5)
+        Pmax = st.slider("Plot max price", 100, 500, 350, 10)
 
-    # choose a reference Q to display a “PED-ish” message (not rigorous, but instructional)
-    st.caption("Note: ‘elastic vs inelastic’ here is guided by slope choices; PED varies along the curve.")
+    # 2nd-degree: first 3 units vs 4+ units (palatable version)
+    st.markdown("### 🥈 2nd-Degree pricing: first 3 units vs 4+ units")
+    d1,d2,d3 = st.columns(3)
+    with d1: q0 = st.slider("First-block size (units)", 1, 10, 3, 1)
+    with d2: p_first = st.slider(f"Price per unit for units 1–{q0}", 0, Pmax, min(230, Pmax), 5)
+    with d3: p_more  = st.slider(f"Price per unit for units {q0+1}+ ", 0, Pmax, min(150, Pmax), 5)
 
-    # ---------- 2nd degree pricing menu controls ----------
-    st.markdown("### 🧩 2nd-Degree (menu) settings (optional)")
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        q_break = st.slider("Quantity break (bundle threshold Qᵦ)", 1, 50, 15, 1)
-    with m2:
-        p_high = st.slider("High price (small/early bundle)", 10, Pmax, min(230, Pmax), 5)
-    with m3:
-        p_low = st.slider("Low price (large/late bundle)", 0, Pmax, min(150, Pmax), 5)
+    # ---- build curves (inelastic, elastic, whole) ----
+    Pgrid = np.linspace(0, Pmax, 401)
+    Qi, Pi = curve_from_Pgrid(Pgrid, Ai, Bi)
+    Qe, Pe = curve_from_Pgrid(Pgrid, Ae, Be)
 
-    # ---------- TABS: 1st / 2nd / 3rd degree ----------
-    t1, t2, t3 = st.tabs(["🥇 1st Degree (Perfect PD)", "🥈 2nd Degree (Menus / Self-Selection)", "🥉 3rd Degree (Group Pricing)"])
+    # whole market from adding Q(P)
+    QtP = np.maximum(0.0, (Ai - Pgrid)/Bi) + np.maximum(0.0, (Ae - Pgrid)/Be)
+    idx = np.argsort(QtP)
+    Qt, Pt = QtP[idx], Pgrid[idx]
 
-    # ========== TAB 1: 1st DEGREE ==========
-    with t1:
-        st.write(
-            "**Idea:** charge each unit at the buyer’s willingness-to-pay (trace the demand curve). "
-            "Output tends toward the **efficient quantity** where **P = MC**; the ‘extra profit’ comes from capturing consumer surplus."
+    segments = [
+        (f"Inelastic: {lab_i}", Ai, Bi, Qi, Pi),
+        (f"Elastic: {lab_e}",   Ae, Be, Qe, Pe),
+        ("Whole market",        None, None, Qt, Pt),
+    ]
+
+    # ---- figure factories (condensed, same functionality) ----
+    def fig_first(title, A, B, Qc, Pc, whole=False):
+        fig = go.Figure()
+        add(fig, Qc, Pc, "Demand", BL)
+        qmax = float(np.max(Qc)) if len(Qc) else 0.0
+        q = np.linspace(0, qmax, 250) if qmax>0 else np.array([0.0])
+        add(fig, q, mc(q, mc0, mc1), "MC", OR)
+        if whole:
+            # efficient where P_total(Q) ≈ MC(Q) via scan/interp
+            p = np.interp(q, Qc, Pc, left=Pc[0] if len(Pc) else 0, right=Pc[-1] if len(Pc) else 0)
+            qeff = float(q[np.argmin(np.abs(p - mc(q, mc0, mc1)))])
+            p_dem, p_mc = np.interp(q[q<=qeff], Qc, Pc), mc(q[q<=qeff], mc0, mc1)
+        else:
+            qeff = float(np.clip(q_star(A, B, mc0, mc1, "efficient"), 0, qmax))
+            qf = np.linspace(0, qeff, 200) if qeff>0 else np.array([0.0])
+            p_dem, p_mc = np.maximum(0, A - B*qf), mc(qf, mc0, mc1)
+            q = qf
+        # shade captured surplus area (≈ PD gain)
+        fig.add_trace(go.Scatter(
+            x=np.r_[q, q[::-1]], y=np.r_[p_dem, p_mc[::-1]], fill="toself",
+            name="Captured surplus (≈ profit gain)", line=dict(width=0),
+            hovertemplate="Captured surplus area<extra></extra>", opacity=0.25
+        ))
+        point(fig, qeff, float(np.interp(qeff, Qc, Pc)), "P=MC", GD)
+        layout(fig, title); return fig
+
+    def fig_second(title, Qc, Pc):
+        fig = go.Figure()
+        add(fig, Qc, Pc, "Demand", BL)
+
+        # “Marginal price of the next unit” (first q0 units pricey; additional units discounted)
+        qmax = int(np.ceil(np.max(Qc))) if len(Qc) else q0+5
+        x = np.array([0, q0, q0, qmax], dtype=float)
+        y = np.array([p_first, p_first, p_more, p_more], dtype=float)
+        fig.add_trace(go.Scatter(
+            x=x, y=y, mode="lines", line=dict(color=GD, shape="hv"),
+            name=f"Per-unit price: 1–{q0} at ${p_first}, then ${p_more}",
+            hovertemplate="Q=%{x:.0f}<br>Per-unit price=$%{y:,.0f}<extra></extra>"
+        ))
+
+        q = np.linspace(0, float(np.max(Qc)) if len(Qc) else qmax, 250)
+        add(fig, q, mc(q, mc0, mc1), "MC", OR)
+
+        fig.add_annotation(
+            x=0.01, y=0.99, xref="paper", yref="paper", showarrow=False, align="left",
+            text=(f"<b>Interpretation (2nd degree)</b><br>"
+                  f"Units 1–{q0}: ${p_first} each<br>"
+                  f"Units {q0+1}+: ${p_more} each<br>"
+                  f"(Customers self-select by buying more to access the lower marginal price.)"),
+            bgcolor="rgba(255,255,255,0.85)", bordercolor="rgba(0,0,0,0.15)", borderwidth=1
         )
+        layout(fig, title); return fig
 
-        def fig_first_degree(Qcurve, Pcurve, A, B, title):
-            # efficient Q where P(Q)=MC(Q)
-            q_eff = find_q_star_linear(A, B, mc0, mc1, mode="efficient")
-            q_eff = float(np.clip(q_eff, 0, max(Qcurve) if len(Qcurve) else q_eff))
-            q_fill = np.linspace(0, q_eff, 200)
-            p_dem = np.maximum(0, A - B * q_fill)
-            p_mc = mc_of_q(q_fill, mc0, mc1)
+    def fig_third(title, A, B, Qc, Pc, whole=False):
+        fig = go.Figure()
+        add(fig, Qc, Pc, "Demand", BL)
+        qmax = float(np.max(Qc)) if len(Qc) else 0.0
+        q = np.linspace(0, qmax, 300) if qmax>0 else np.array([0.0])
 
-            fig = go.Figure()
-            add(fig, Qcurve, Pcurve, "Demand (P vs Q)", BL)
-            add(fig, q_fill, p_mc, "MC", OR)
-            # shade “profit from perfect PD” approx = area between demand and MC up to q_eff
-            fig.add_trace(go.Scatter(
-                x=np.r_[q_fill, q_fill[::-1]],
-                y=np.r_[p_dem, p_mc[::-1]],
-                fill="toself", name="Captured surplus (≈ profit gain)", line=dict(width=0),
-                hovertemplate="Captured surplus area<extra></extra>",
-                showlegend=True, opacity=0.25
-            ))
-            add_point(fig, q_eff, max(0, A - B*q_eff), "Q where P=MC", GD)
-            layout(fig, title)
-            return fig
-
-        g1, g2, g3 = st.columns(3)
-        with g1:
-            st.plotly_chart(fig_first_degree(Qi_curve, Pi_curve, Ai, Bi, f"Inelastic Segment: {seg_inel}"), use_container_width=True)
-        with g2:
-            st.plotly_chart(fig_first_degree(Qe_curve, Pe_curve, Ae, Be, f"Elastic Segment: {seg_el}"), use_container_width=True)
-        with g3:
-            # whole market: MC vs total demand only (no closed form MR needed here)
-            # approximate efficient point where P_total(Q)=MC(Q) by scanning Qt_curve
-            Qw, Pw = Qt_curve, Pt_curve
-            q_scan = np.linspace(0, max(Qw) if len(Qw) else 0, 400)
-            p_tot = np.interp(q_scan, Qw, Pw, left=Pw[0] if len(Pw) else 0, right=Pw[-1] if len(Pw) else 0)
-            p_mc = mc_of_q(q_scan, mc0, mc1)
-            idx = np.argmin(np.abs(p_tot - p_mc)) if len(q_scan) else 0
-            q_eff = float(q_scan[idx]) if len(q_scan) else 0
-
-            fig = go.Figure()
-            add(fig, Qw, Pw, "Whole Market Demand", BL)
-            add(fig, q_scan, p_mc, "MC", OR)
-            fig.add_trace(go.Scatter(
-                x=np.r_[q_scan[q_scan<=q_eff], q_scan[q_scan<=q_eff][::-1]],
-                y=np.r_[p_tot[q_scan<=q_eff], p_mc[q_scan<=q_eff][::-1]],
-                fill="toself", name="Captured surplus (≈ profit gain)", line=dict(width=0),
-                hovertemplate="Captured surplus area<extra></extra>",
-                showlegend=True, opacity=0.25
-            ))
-            add_point(fig, q_eff, float(np.interp(q_eff, Qw, Pw)), "Q where P≈MC", GD)
-            layout(fig, "Whole Market (Perfect PD benchmark)")
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ========== TAB 2: 2nd DEGREE ==========
-    with t2:
-        st.write(
-            "**Idea:** firm can’t directly observe types, so it offers a **menu** (bundles/versions). "
-            "Customers self-select: inelastic types often pick the high-price option; elastic types gravitate to the discount."
-        )
-
-        def fig_second_degree(Qcurve, Pcurve, title):
-            fig = go.Figure()
-            add(fig, Qcurve, Pcurve, "Demand (P vs Q)", BL)
-            # pricing menu as a step schedule in (Q,P) space
-            q_step = np.array([0, q_break, q_break, max(Qcurve) if len(Qcurve) else q_break])
-            p_step = np.array([p_high, p_high, p_low, p_low])
-            fig.add_trace(go.Scatter(
-                x=q_step, y=p_step, mode="lines", name="Menu price schedule (block/versions)",
-                line=dict(color=GD, shape="hv"),
-                hovertemplate="Q=%{x:.0f}<br>Menu price=$%{y:,.0f}<extra></extra>",
-            ))
-            # MC
-            q_fill = np.linspace(0, max(Qcurve) if len(Qcurve) else 0, 200)
-            add(fig, q_fill, mc_of_q(q_fill, mc0, mc1), "MC", OR)
-            layout(fig, title)
-            return fig
-
-        g1, g2, g3 = st.columns(3)
-        with g1:
-            st.plotly_chart(fig_second_degree(Qi_curve, Pi_curve, f"Inelastic Segment: {seg_inel} (Menu Illustration)"), use_container_width=True)
-        with g2:
-            st.plotly_chart(fig_second_degree(Qe_curve, Pe_curve, f"Elastic Segment: {seg_el} (Menu Illustration)"), use_container_width=True)
-        with g3:
-            st.plotly_chart(fig_second_degree(Qt_curve, Pt_curve, "Whole Market (Menu Illustration)"), use_container_width=True)
-
-        st.caption(
-            "Teaching cue: ask students **who chooses which option and why** (elasticity → sensitivity to price). "
-            "You can also tie this to **versioning**, **bundles**, **quantity discounts**, and **peak/off-peak pricing**."
-        )
-
-    # ========== TAB 3: 3rd DEGREE ==========
-    with t3:
-        st.write(
-            "**Idea:** firm can identify groups (students/seniors, business/leisure, regions) and charge **different prices**. "
-            "Each group acts like its own monopoly problem: choose Q where **MR = MC** for that group."
-        )
-
-        def fig_third_degree(Qcurve, Pcurve, A, B, title):
-            # monopoly optimum for a segment: MR=MC, MR = A - 2BQ
-            q_star = find_q_star_linear(A, B, mc0, mc1, mode="monopoly")
-            q_star = float(np.clip(q_star, 0, max(Qcurve) if len(Qcurve) else q_star))
-            p_star = max(0.0, A - B*q_star)
-
-            q_line = np.linspace(0, max(Qcurve) if len(Qcurve) else q_star, 250)
-            dem = np.maximum(0, A - B*q_line)
-            mr = A - 2*B*q_line
-            mc = mc_of_q(q_line, mc0, mc1)
-
-            fig = go.Figure()
-            add(fig, Qcurve, Pcurve, "Demand (P vs Q)", BL)
-            add(fig, q_line, mr, "MR", GR, yfmt="$%{y:,.0f}")
-            add(fig, q_line, mc, "MC", OR, yfmt="$%{y:,.0f}")
-            add_point(fig, q_star, p_star, "Set Q where MR=MC", GD)
-            layout(fig, title)
-            return fig
-
-        g1, g2, g3 = st.columns(3)
-        with g1:
-            st.plotly_chart(fig_third_degree(Qi_curve, Pi_curve, Ai, Bi, f"Inelastic Segment: {seg_inel} (Group Price)"), use_container_width=True)
-        with g2:
-            st.plotly_chart(fig_third_degree(Qe_curve, Pe_curve, Ae, Be, f"Elastic Segment: {seg_el} (Group Price)"), use_container_width=True)
-        with g3:
-            # Whole market “single-price monopoly” comparison: approximate MR numerically from Pt_curve
-            Qw, Pw = Qt_curve, Pt_curve
-            q = np.linspace(0, max(Qw) if len(Qw) else 0, 400)
-            p = np.interp(q, Qw, Pw, left=Pw[0] if len(Pw) else 0, right=Pw[-1] if len(Pw) else 0)
-            tr = p * q
-            mr = np.gradient(tr, q, edge_order=1)
-            mc = mc_of_q(q, mc0, mc1)
-
-            # choose q* where MR ~ MC (last point where MR>=MC)
-            ok = mr >= mc
-            q_star = float(q[np.where(ok)[0][-1]]) if ok.any() else 0.0
-
-            fig = go.Figure()
-            add(fig, Qw, Pw, "Whole Market Demand", BL)
+        if whole:
+            # approximate MR from TR along whole market (single-price monopoly comparison)
+            p = np.interp(q, Qc, Pc, left=Pc[0] if len(Pc) else 0, right=Pc[-1] if len(Pc) else 0)
+            tr = p*q
+            mr = np.gradient(tr, q, edge_order=1) if len(q)>2 else tr*0
             add(fig, q, mr, "MR (approx)", GR)
-            add(fig, q, mc, "MC", OR)
-            add_point(fig, q_star, float(np.interp(q_star, Qw, Pw)), "Single-price monopoly Q*", GD)
-            layout(fig, "Whole Market (Single Price Monopoly Comparison)")
-            st.plotly_chart(fig, use_container_width=True)
+            add(fig, q, mc(q, mc0, mc1), "MC", OR)
+            ok = mr >= mc(q, mc0, mc1)
+            qs = float(q[np.where(ok)[0][-1]]) if ok.any() else 0.0
+            point(fig, qs, float(np.interp(qs, Qc, Pc)), "MR≈MC", GD)
+        else:
+            add(fig, q, (A - 2*B*q), "MR", GR)
+            add(fig, q, mc(q, mc0, mc1), "MC", OR)
+            qs = float(np.clip(q_star(A, B, mc0, mc1, "monopoly"), 0, qmax))
+            point(fig, qs, max(0.0, A - B*qs), "MR=MC", GD)
 
-        st.caption(
-            "Teaching cue: **which group gets the higher price?** Usually the more inelastic group (steeper demand) "
-            "because they’re less sensitive to price changes."
-        )
+        layout(fig, title); return fig
+
+    # ---- tabs + 3 graphs per degree (inelastic / elastic / whole) ----
+    t1,t2,t3 = st.tabs(["🥇 1st Degree (Perfect PD)", "🥈 2nd Degree (Blocks: first units vs more)", "🥉 3rd Degree (Group pricing)"])
+
+    with t1:
+        st.write("**1st degree (perfect PD):** output moves toward **P=MC**, and the firm captures surplus (shaded).")
+        cols = st.columns(3)
+        for col, (name,A,B,Qc,Pc) in zip(cols, segments):
+            col.plotly_chart(
+                fig_first(name, A, B, Qc, Pc, whole=(name=="Whole market")),
+                use_container_width=True
+            )
+
+    with t2:
+        st.write("**2nd degree:** the firm can’t *see* types, so it sets pricing that rewards buying more (self-selection).")
+        cols = st.columns(3)
+        for col, (name,A,B,Qc,Pc) in zip(cols, segments):
+            col.plotly_chart(fig_second(name, Qc, Pc), use_container_width=True)
+
+    with t3:
+        st.write("**3rd degree:** the firm can identify groups and solves **MR=MC** separately by segment.")
+        cols = st.columns(3)
+        for col, (name,A,B,Qc,Pc) in zip(cols, segments):
+            col.plotly_chart(
+                fig_third(name, A, B, Qc, Pc, whole=(name=="Whole market")),
+                use_container_width=True
+            )
 
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 
 def page_supply_shock_elasticity():
@@ -1768,6 +1683,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
