@@ -1448,7 +1448,7 @@ pages = {
     "Cost Curve Explorer": page_cost_curve_explorer,
     "Supply & Demand Shock": page_supply_demand_shock,
     "Supply Shock and Demand Elasticity": page_supply_shock_elasticity,
-    "Marginal Revenue - Pricing Power Builder": page_price_setting_marginal_revenue_builder,
+    "Marginal Revenue - Pricing Power Builder": page_market_power_cost_revenue_builder,
 }
 
 game_choice = st.sidebar.radio("Select a Game:", list(pages.keys()), key="selected_game")
@@ -1497,6 +1497,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
