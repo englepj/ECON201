@@ -483,21 +483,21 @@ def page_market_power_cost_revenue_builder():
     PROFm = TRm - TC
 
     # -------- table --------
-    st.divider(); st.markdown("### 🧾 Table")
-    df = pd.DataFrame({
-        "Q": Q,
-        "Total Cost (TC)": TC.round().astype(int),
-        "Marginal Cost (MC)": MC.round().astype(int),
-        "Price-Taking TR": TRc.round().astype(int),
-        "Price-Taking Profit": PROFc.round().astype(int),
-        "Price-Maker Price (Demand P)": Pd.round().astype(int),
-        "Total Price-Maker Revenue (TR)": TRm.round().astype(int),
-        "Marginal Revenue (MR)": MRm.round().astype(int),
-        "Price-Making Profit": PROFm.round().astype(int),
-    })
-    st.dataframe(df, use_container_width=True)
-    try: export_csv_button("📥 Download Table CSV", df, "market_power_table")
-    except Exception: pass
+    #st.divider(); st.markdown("### 🧾 Table")
+    #df = pd.DataFrame({
+    #    "Q": Q,
+    #    "Total Cost (TC)": TC.round().astype(int),
+    #    "Marginal Cost (MC)": MC.round().astype(int),
+    #    "Price-Taking TR": TRc.round().astype(int),
+    #    "Price-Taking Profit": PROFc.round().astype(int),
+    #    "Price-Maker Price (Demand P)": Pd.round().astype(int),
+    #    "Total Price-Maker Revenue (TR)": TRm.round().astype(int),
+    #    "Marginal Revenue (MR)": MRm.round().astype(int),
+    #    "Price-Making Profit": PROFm.round().astype(int),
+    #})
+    #st.dataframe(df, use_container_width=True)
+    #try: export_csv_button("📥 Download Table CSV", df, "market_power_table")
+    #except Exception: pass
 
     # -------- plot helper (currency + whole numbers in hover) --------
     def add_line(fig, x, y, name, color, yfmt="$%{y:,.0f}", extra=None):
@@ -1683,6 +1683,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
