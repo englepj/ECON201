@@ -129,14 +129,14 @@ def page_price_discrimination_segmentation():
     except: BL, OR, GD, GR = "#4E79A7", "#F28E2B", "#EDC948", "#8C8C8C"
 
     st.markdown("## 🏷️ Price Discrimination Builder (1st, 2nd, 3rd Degree)")
-    st.write("Same demand/MC sliders feed all examples; only the **labels/story** change by degree.")
+    st.write("Same demand/MC sliders feed all graphs; only the **labels/story** change by degree.")
 
-    # ---- helpers (condensed) ----
-    ht = lambda n, yname="P": f"Q=%{{x:.0f}}<br>{yname} {n}=$%{{y:,.0f}}<extra></extra>"
-    def add(fig,x,y,n,c,dash=None,shape=None,mode="lines",yname="P"):
+    # ---- tiny helpers ----
+    ht = lambda n: f"Q=%{{x:.0f}}<br>{n}=$%{{y:,.0f}}<extra></extra>"
+    def add(fig,x,y,n,c,dash=None,shape=None,mode="lines"):
         fig.add_trace(go.Scatter(x=x,y=y,mode=mode,name=n,
                                  line=dict(color=c,dash=dash,shape=shape),
-                                 hovertemplate=ht(n,yname)))
+                                 hovertemplate=ht(n)))
     def pt(fig,q,p,txt,c):
         fig.add_trace(go.Scatter(x=[q],y=[p],mode="markers+text",text=[txt],textposition="top right",
                                  marker=dict(size=9,color=c),showlegend=False,
@@ -152,7 +152,7 @@ def page_price_discrimination_segmentation():
     mc = lambda q,a,b: a + b*q
     qstar = lambda A,B,a,b,k: max(0,(A-a)/(((2*B) if k=="monopoly" else B)+b)) if (((2*B) if k=="monopoly" else B)+b)>0 else 0
 
-    # ---- sliders (shared across all degrees) ----
+    # ---- shared sliders (apply to ALL tabs) ----
     st.markdown("### ⚙️ Shared Market Settings (apply to ALL graphs)")
     c1,c2,c3 = st.columns(3)
     with c1:
@@ -166,26 +166,25 @@ def page_price_discrimination_segmentation():
         mc1 = st.slider("MC slope", 0.0, 20.0, 0.0, 0.5)
         Pmax = st.slider("Max price for graph", 100, 500, 350, 10)
 
-    # ---- 2nd-degree pricing rule (Option B): Total Bill schedule ----
-    st.markdown("### 🥈 2nd-Degree pricing (Option B): Total Bill for 3-pack vs bulk")
-    q0 = 3
-    avgWTP = (A_inel + A_el)/2
-    p_first = int(np.clip(round(0.70*avgWTP), 1, Pmax))   # per-unit for units 1..3
-    p_more  = int(np.clip(round(0.55*p_first), 1, Pmax))  # per-unit after 3
-    st.info(
-        f"Pricing rule: **Units 1–{q0} cost ${p_first} each**, then **units {q0+1}+ cost ${p_more} each**. "
-        "We graph what your **total bill** would be at each quantity."
-    )
-
-    # ---- curves (same math everywhere; only labels change by tab) ----
+    # ---- demand curves (same everywhere) ----
     P = np.linspace(0, Pmax, 400)
     QI, PI = curve(P, A_inel, B_inel)
     QE, PE = curve(P, A_el, B_el)
-
     QtP = np.maximum(0,(A_inel-P)/B_inel) + np.maximum(0,(A_el-P)/B_el)
     idx = np.argsort(QtP); QW, PW = QtP[idx], P[idx]
 
-    # ---- figure factories ----
+    # ---- 2nd degree (Option C): Average Price per Unit (AP) schedule ----
+    st.markdown("### 🥈 2nd-Degree (Option C): Average price per unit falls when you buy more")
+    q0 = 3
+    avgWTP = (A_inel + A_el)/2
+    p_first = int(np.clip(round(0.70*avgWTP), 1, Pmax))   # “small purchase” per-unit price
+    p_more  = int(np.clip(round(0.55*p_first), 1, Pmax))  # “bulk” per-unit price
+    st.info(
+        f"Rule: Units **1–{q0}** cost **${p_first} each**; units **{q0+1}+** cost **${p_more} each**. "
+        "We graph **Average Price per Unit** = (Total Bill / Q)."
+    )
+
+    # ---- figures ----
     def fig_first(title, A, B, Qc, Pc, whole=False):
         fig = go.Figure()
         add(fig, Qc, Pc, "Demand", BL)
@@ -201,29 +200,35 @@ def page_price_discrimination_segmentation():
             qs = float(qstar(A, B, mc0, mc1, "efficient"))
 
         pt(fig, qs, float(np.interp(qs, Qc, Pc)), "P=MC", GD)
-        lay(fig, title, "$ per unit"); return fig
+        lay(fig, title); return fig
 
-    def fig_second_total_bill(title, Qc):
-        # Total Bill graph (Option B): y-axis is dollars paid, not $/unit
+    def fig_second_AP(title, Qc, Pc):
         fig = go.Figure()
+        add(fig, Qc, Pc, "Demand", BL)
         qmax = int(max(10, np.ceil(np.max(Qc)))) if len(Qc) else 10
+
+        # Average price per unit under the discount rule
         Qb = np.arange(1, qmax + 1)
         bill = np.where(Qb <= q0, p_first*Qb, p_first*q0 + p_more*(Qb - q0))
-        bill_nodiscount = p_first * Qb
+        ap = bill / Qb
 
-        add(fig, Qb, bill, "Total Bill (with bulk discount)", GD, mode="lines+markers", yname="Bill")
-        add(fig, Qb, bill_nodiscount, "Total Bill (no discount: all at high price)", GR, dash="dash", mode="lines", yname="Bill")
+        add(fig, Qb, ap, "Average Price per Unit (Total Bill / Q)", GD, mode="lines+markers")
+        add(fig, Qb, np.full_like(Qb, p_more, dtype=float), f"Bulk per-unit price = ${p_more}", GR, dash="dash")
+        add(fig, Qb, np.full_like(Qb, p_first, dtype=float), f"Small-batch per-unit price = ${p_first}", GR, dash="dot")
+
+        q = np.linspace(0, qmax, 250)
+        add(fig, q, mc(q, mc0, mc1), "MC", OR)
 
         fig.add_vline(x=q0, line_width=1, line_dash="dot", opacity=0.6)
         fig.add_annotation(
             x=0.01, y=0.99, xref="paper", yref="paper", showarrow=False, align="left",
-            text=(f"<b>Read this graph</b><br>"
-                  f"• If you buy <b>1–{q0}</b> units: total bill rises at <b>${p_first}</b> per unit<br>"
-                  f"• After <b>{q0}</b> units: bill rises slower at <b>${p_more}</b> per extra unit<br>"
-                  f"• Dashed line shows what you’d pay if there were <i>no</i> bulk discount."),
+            text=(f"<b>Read this (2nd-degree PD)</b><br>"
+                  f"• Buying more lowers your <b>average</b> price per unit<br>"
+                  f"• After Q={q0}, each extra unit is cheaper (${p_more})<br>"
+                  f"• Price-sensitive shoppers (CostCo-type) buy enough to drop AP"),
             bgcolor="rgba(255,255,255,0.85)", bordercolor="rgba(0,0,0,0.15)", borderwidth=1
         )
-        lay(fig, title, "Total Bill ($)"); return fig
+        lay(fig, title); return fig
 
     def fig_third(title, A, B, Qc, Pc, whole=False):
         fig = go.Figure()
@@ -242,13 +247,12 @@ def page_price_discrimination_segmentation():
             qs = float(qstar(A, B, mc0, mc1, "monopoly"))
 
         pt(fig, qs, float(np.interp(qs, Qc, Pc)), "MR=MC", GD)
-        lay(fig, title, "$ per unit"); return fig
+        lay(fig, title); return fig
 
     # ---- tabs ----
-    t1, t2, t3 = st.tabs(["🥇 1st Degree (Perfect PD)", "🥈 2nd Degree (Total Bill)", "🥉 3rd Degree (Group Pricing)"])
+    t1, t2, t3 = st.tabs(["🥇 1st Degree (Perfect PD)", "🥈 2nd Degree (Average Price)", "🥉 3rd Degree (Group Pricing)"])
 
     with t1:
-        st.write("**1st degree:** charge each unit at willingness-to-pay. Dashed line shows MR.")
         cols = st.columns(3)
         labs = ["I Have ESP, Inc's Product (inelastic)", "I Have ESP, Inc's Product (elastic)", "Whole Market"]
         for col, lab, A, B, Qc, Pc, is_whole in zip(
@@ -260,14 +264,12 @@ def page_price_discrimination_segmentation():
             col.plotly_chart(fig_first(lab, A, B, Qc, Pc, whole=is_whole), use_container_width=True)
 
     with t2:
-        st.write("**2nd degree:** pricing encourages buying more (bulk discount). We show the **total bill** students would pay.")
         cols = st.columns(3)
         labs = ["Safeway (inelastic)", "CostCo (elastic)", "Whole Market"]
-        for col, lab, Qc in zip(cols, labs, [QI, QE, QW]):
-            col.plotly_chart(fig_second_total_bill(lab, Qc), use_container_width=True)
+        for col, lab, Qc, Pc in zip(cols, labs, [QI, QE, QW], [PI, PE, PW]):
+            col.plotly_chart(fig_second_AP(lab, Qc, Pc), use_container_width=True)
 
     with t3:
-        st.write("**3rd degree:** firm can identify groups and sets MR=MC separately.")
         cols = st.columns(3)
         labs = ["Business Travel (inelastic)", "Leisure Travel (elastic)", "Whole Market"]
         for col, lab, A, B, Qc, Pc, is_whole in zip(
@@ -1655,6 +1657,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 
 
