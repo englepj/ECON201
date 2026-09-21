@@ -105,7 +105,7 @@ st.markdown(
     f"""
 <div id="top" style='background-color:{cbc_lightblue}; padding: 10px; border-radius: 10px;'>
     <h1 style='text-align: center;'>CBC Economics Simulations/Problems</h1>
-    <h2 style='text-align: center;'> for Winter 2026 ECON&201 with Prof Engle </h2>
+    <h2 style='text-align: center;'> for Fall 2026 ECON&201 with Prof Engle </h2>
     <p style='text-align: center; color: black;'>Choose a simulation / problem set to explore key economic concepts.</p>
 </div>
 """,
