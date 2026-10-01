@@ -930,116 +930,183 @@ def page_marginal_utility_demand():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+def page_budget_constraint():
+    st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
+    st.markdown("## 💰 Budget Constraint Simulator")
+ 
+    income = st.sidebar.slider("Weekly Budget ($)", 10, 200, 100)
+    price_coffee = st.sidebar.slider("Price of Coffee ($)", 1, 10, 5)
+    price_sandwich = st.sidebar.slider("Price of Sandwich ($)", 1, 10, 5)
+ 
+    max_coffee = income / price_coffee        # x-intercept
+    max_sandwich = income / price_sandwich    # y-intercept
+    slope = price_coffee / price_sandwich     # sandwiches given up per coffee
+ 
+    # Baseline line so students can SEE shifts (income) and pivots (prices).
+    current = {"income": income, "pc": price_coffee, "ps": price_sandwich}
+    st.session_state.setdefault("bc_ref", current)
+    if st.sidebar.button("📌 Set current line as baseline", key="bc_set_ref"):
+        st.session_state.bc_ref = current
+    ref = st.session_state.bc_ref
+    ref_max_c, ref_max_s = ref["income"] / ref["pc"], ref["income"] / ref["ps"]
+ 
+    # Keep the student's coffee choice when the budget changes (clamp instead of reset).
+    cmax = int(max_coffee)
+    st.session_state.setdefault("bc_coffee", cmax // 2)
+    st.session_state.bc_coffee = min(int(st.session_state.bc_coffee), cmax)
+    coffee_choice = st.slider("Coffees to Buy", 0, cmax, key="bc_coffee")
+    sandwich_choice = (income - coffee_choice * price_coffee) / price_sandwich
+ 
+    st.markdown(f"☕ Coffees: **{coffee_choice}**  | 🥪 Sandwiches: **{sandwich_choice:.1f}**")
+    st.caption(
+        f"Intercepts: {max_coffee:.1f} coffees (all on coffee) or {max_sandwich:.1f} sandwiches (all on sandwiches). "
+        f"Slope = −P_coffee / P_sandwich = −{slope:.2f}, so each coffee costs {slope:.2f} sandwiches."
+    )
+ 
+    col1, col2 = st.columns(2)
+    with col1:
+        xmax = 1.1 * max(max_coffee, ref_max_c)
+        ymax = 1.1 * max(max_sandwich, ref_max_s)
+        bc_fig = go.Figure()
+        bc_fig.add_trace(go.Scatter(
+            x=[0, ref_max_c], y=[ref_max_s, 0], mode="lines", name="Baseline",
+            line=dict(color="gray", dash="dash"),
+        ))
+        bc_fig.add_trace(go.Scatter(
+            x=[0, max_coffee], y=[max_sandwich, 0], mode="lines", name="Budget Line",
+            line=dict(color=cbc_blue, width=3), fill="tozeroy", fillcolor="rgba(0,69,124,0.08)",
+        ))
+        bc_fig.add_trace(go.Scatter(
+            x=[coffee_choice], y=[sandwich_choice], mode="markers", name="Your Choice",
+            marker=dict(size=12, color=cbc_orange),
+        ))
+        bc_fig.update_layout(
+            title="Budget Constraint (shaded = affordable)",
+            xaxis_title="Coffees",
+            yaxis_title="Sandwiches",
+            template="simple_white",
+            xaxis=dict(range=[0, xmax]),   # fixed axes: shifts/pivots are visible
+            yaxis=dict(range=[0, ymax]),
+            legend=dict(orientation="h", y=1.12, x=0),
+        )
+        st.plotly_chart(bc_fig, use_container_width=True)
+ 
+    with col2:
+        bar_fig = go.Figure()
+        bar_fig.add_trace(go.Bar(
+            x=["Coffees", "Sandwiches"],
+            y=[coffee_choice, sandwich_choice],
+            marker_color=[cbc_orange, cbc_blue],
+            text=[f"{coffee_choice}", f"{sandwich_choice:.1f}"],
+            textposition="auto",
+        ))
+        bar_fig.update_layout(title="Your Spending Allocation", yaxis_title="Quantity Chosen",
+                              xaxis_title="Goods", template="simple_white")
+        st.plotly_chart(bar_fig, use_container_width=True)
+ 
+    df_budget = pd.DataFrame({
+        "Good": ["Coffees", "Sandwiches"],
+        "Quantity": [coffee_choice, sandwich_choice],
+        "Price ($)": [price_coffee, price_sandwich],
+        "Spending ($)": [coffee_choice * price_coffee, sandwich_choice * price_sandwich],
+    })
+    export_csv_button("📥 Download Budget CSV", df_budget, "budget_allocation")
+    st.markdown("</div>", unsafe_allow_html=True)
+ 
+ 
 def page_ppf_rabbits_berries():
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("## 🐇🍓 Production Possibilities Frontier (PPF)")
-
+ 
     resources = st.sidebar.slider("Total Labor Hours", 10, 100, 50)
-    cost_rabbit = st.sidebar.slider("Labor per Rabbit", 1, 5, 2)
-    cost_berry = st.sidebar.slider("Labor per Berry", 1, 5, 1)
-
-    def produce_rabbits(labor):
-        return (labor / cost_rabbit) ** 0.5
-
-    def produce_berries(labor):
-        return (labor / cost_berry) ** 0.6
-
-    labor_range = np.linspace(0, resources, 100)
-    r_output = produce_rabbits(labor_range)
-    b_output = produce_berries(resources - labor_range)
-
-    r_labor = st.slider("Labor for Rabbits", 0, resources, int(resources / 2))
+    # With rabbits = (L/c)^0.5, c is exactly the hours for the FIRST rabbit; later ones take more.
+    cost_rabbit = st.sidebar.slider("Hours for 1st Rabbit (each extra takes longer)", 1, 5, 2)
+    cost_berry = st.sidebar.slider("Hours for 1st Berry (each extra takes longer)", 1, 5, 1)
+ 
+    def produce_rabbits(labor, c):
+        return (labor / c) ** 0.5
+ 
+    def produce_berries(labor, c):
+        return (labor / c) ** 0.6
+ 
+    def frontier(R, cr, cb):
+        L = np.linspace(0, R, 200)
+        return produce_rabbits(L, cr), produce_berries(R - L, cb)
+ 
+    # Baseline PPF so growth (outward shift) and tech changes are visible.
+    current = {"R": resources, "cr": cost_rabbit, "cb": cost_berry}
+    st.session_state.setdefault("ppf_ref", current)
+    if st.sidebar.button("📌 Set current PPF as baseline", key="ppf_set_ref"):
+        st.session_state.ppf_ref = current
+    ref = st.session_state.ppf_ref
+ 
+    r_output, b_output = frontier(resources, cost_rabbit, cost_berry)
+    r_ref, b_ref = frontier(ref["R"], ref["cr"], ref["cb"])
+ 
+    # Keep the labor choice when total hours change (clamp instead of reset).
+    st.session_state.setdefault("ppf_rlabor", resources // 2)
+    st.session_state.ppf_rlabor = min(int(st.session_state.ppf_rlabor), resources)
+    r_labor = st.slider("Labor for Rabbits", 0, resources, key="ppf_rlabor")
     b_labor = resources - r_labor
-
-    r_choice = float(produce_rabbits(r_labor))
-    b_choice = float(produce_berries(b_labor))
-
+ 
+    r_choice = float(produce_rabbits(r_labor, cost_rabbit))
+    b_choice = float(produce_berries(b_labor, cost_berry))
+ 
     st.markdown(f"🐇 Rabbits: **{r_choice:.1f}**  |  🍓 Berries: **{b_choice:.1f}**")
-
+    st.caption(
+        f"Diminishing returns: N rabbits take {cost_rabbit}×N² hours; N berries take {cost_berry}×N^1.67 hours. "
+        f"Max possible: {r_output.max():.1f} rabbits or {b_output.max():.1f} berries."
+    )
+ 
+    # Opportunity cost = slope of the PPF = MP_berries / MP_rabbits (berries given up per extra rabbit)
+    if 0 < r_labor < resources:
+        mp_r = 0.5 / cost_rabbit * (r_labor / cost_rabbit) ** -0.5
+        mp_b = 0.6 / cost_berry * (b_labor / cost_berry) ** -0.4
+        st.caption(
+            f"Opportunity cost at your point: 1 more rabbit ≈ **{mp_b / mp_r:.2f} berries**. "
+            "It rises as you shift labor toward rabbits — that's why the PPF bows outward."
+        )
+ 
     col1, col2 = st.columns(2)
     with col1:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=r_output, y=b_output, mode="lines", name="PPF Frontier", line=dict(color=cbc_darkorange)))
-        fig.add_trace(
-            go.Scatter(x=[r_choice], y=[b_choice], mode="markers", name="Your Allocation", marker=dict(size=12, color=cbc_gold))
-        )
+        fig.add_trace(go.Scatter(x=r_ref, y=b_ref, mode="lines", name="Baseline PPF",
+                                 line=dict(color="gray", dash="dash")))
+        fig.add_trace(go.Scatter(x=r_output, y=b_output, mode="lines", name="PPF Frontier",
+                                 line=dict(color=cbc_darkorange, width=3)))
+        fig.add_trace(go.Scatter(x=[r_choice], y=[b_choice], mode="markers", name="Your Allocation",
+                                 marker=dict(size=12, color=cbc_gold)))
         fig.update_layout(
             title="Production Possibilities Frontier",
             xaxis_title="Rabbits",
             yaxis_title="Berries",
             template="simple_white",
-            legend=dict(x=0.8, y=0.95),
+            xaxis=dict(range=[0, 1.1 * max(r_output.max(), r_ref.max())]),
+            yaxis=dict(range=[0, 1.1 * max(b_output.max(), b_ref.max())]),
+            legend=dict(orientation="h", y=1.12, x=0),
         )
         st.plotly_chart(fig, use_container_width=True)
-
+ 
     with col2:
         bar_fig = go.Figure()
-        bar_fig.add_trace(
-            go.Bar(
-                x=["Rabbits", "Berries"],
-                y=[r_choice, b_choice],
-                marker_color=[cbc_gold, cbc_blue],
-                text=[f"{r_choice:.1f}", f"{b_choice:.1f}"],
-                textposition="auto",
-            )
-        )
-        bar_fig.update_layout(title="Your Output Allocation", yaxis_title="Units Produced", xaxis_title="Goods", template="simple_white")
+        bar_fig.add_trace(go.Bar(
+            x=["Rabbits", "Berries"],
+            y=[r_choice, b_choice],
+            marker_color=[cbc_gold, cbc_blue],
+            text=[f"{r_choice:.1f}", f"{b_choice:.1f}"],
+            textposition="auto",
+        ))
+        bar_fig.update_layout(title="Your Output Allocation", yaxis_title="Units Produced",
+                              xaxis_title="Goods", template="simple_white")
         st.plotly_chart(bar_fig, use_container_width=True)
-
-    df_ppf = pd.DataFrame({"Good": ["Rabbits", "Berries"], "Output": [r_choice, b_choice]})
+ 
+    df_ppf = pd.DataFrame({
+        "Good": ["Rabbits", "Berries"],
+        "Labor Hours": [r_labor, b_labor],
+        "Output": [r_choice, b_choice],
+    })
     export_csv_button("📥 Download CSV", df_ppf, "ppf_allocation")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def page_budget_constraint():
-    st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-    st.markdown("## 💰 Budget Constraint Simulator")
-
-    income = st.sidebar.slider("Weekly Budget ($)", 10, 200, 100)
-    price_coffee = st.sidebar.slider("Price of Coffee ($)", 1, 10, 5)
-    price_sandwich = st.sidebar.slider("Price of Sandwich ($)", 1, 10, 5)
-
-    max_coffee = income / price_coffee
-    coffee_range = np.linspace(0, max_coffee, 100)
-    sandwich_range = (income - coffee_range * price_coffee) / price_sandwich
-
-    coffee_choice = st.slider("Coffees to Buy", 0, int(max_coffee), int(max_coffee // 2))
-    sandwich_choice = (income - coffee_choice * price_coffee) / price_sandwich
-
-    st.markdown(f"☕ Coffees: **{coffee_choice}**  | 🥪 Sandwiches: **{sandwich_choice:.1f}**")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        bc_fig = go.Figure()
-        bc_fig.add_trace(go.Scatter(x=coffee_range, y=sandwich_range, mode="lines", name="Budget Line", line=dict(color=cbc_blue)))
-        bc_fig.add_trace(
-            go.Scatter(x=[coffee_choice], y=[sandwich_choice], mode="markers", name="Your Choice", marker=dict(size=12, color=cbc_orange))
-        )
-        bc_fig.update_layout(
-            title="Budget Constraint",
-            xaxis_title="Coffees",
-            yaxis_title="Sandwiches",
-            template="simple_white",
-            legend=dict(x=0.75, y=0.95),
-        )
-        st.plotly_chart(bc_fig, use_container_width=True)
-
-    with col2:
-        bar_fig = go.Figure()
-        bar_fig.add_trace(
-            go.Bar(
-                x=["Coffees", "Sandwiches"],
-                y=[coffee_choice, sandwich_choice],
-                marker_color=[cbc_orange, cbc_blue],
-                text=[f"{coffee_choice}", f"{sandwich_choice:.1f}"],
-                textposition="auto",
-            )
-        )
-        bar_fig.update_layout(title="Your Spending Allocation", yaxis_title="Quantity Chosen", xaxis_title="Goods", template="simple_white")
-        st.plotly_chart(bar_fig, use_container_width=True)
-
-    df_budget = pd.DataFrame({"Good": ["Coffees", "Sandwiches"], "Quantity": [coffee_choice, sandwich_choice]})
-    export_csv_button("📥 Download Budget CSV", df_budget, "budget_allocation")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
