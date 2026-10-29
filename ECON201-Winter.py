@@ -421,118 +421,466 @@ def page_supply_shock_elasticity():
         st.write("Note: With linear demand, elasticity varies by point; the slider calibrates |PED| specifically at (P0,Q0).")
 
 
-def page_market_power_cost_revenue_builder():
-    import numpy as np, pandas as pd, streamlit as st
-    import plotly.graph_objects as go
+# ============================================================
+# Marginal Revenue - Pricing Power Builder
+# ------------------------------------------------------------
+# Everything is DISCRETE (whole units, Q = 0..10) so every number on a
+# graph can be traced to a row in the table:
+#   MC(q)  = cost of the q-th unit        TC(Q) = FC + sum of MC
+#   MR(q)  = TR(q) - TR(q-1)              (never the continuous formula)
+#   Q*     = the Q with the largest profit (same as "keep making units
+#            while MR >= MC"; includes Q = 0, so shutdown is handled)
+# ============================================================
+from plotly.subplots import make_subplots
 
-    # Colors (use your globals if present)
-    try: OR, BL, GD, GR = cbc_darkorange, cbc_blue, cbc_gold, cbc_gray
-    except Exception: OR, BL, GD, GR = "#F28E2B", "#4E79A7", "#EDC948", "#8C8C8C"
+PP_QMAX = 10
+
+# Chart colors (CBC blue kept for demand/TR; checked for colorblind separation)
+PP_BLUE = "#00457C"    # demand / price / TR
+PP_ORANGE = "#D9603B"  # MC / TC
+PP_PURPLE = "#9B59B6"  # MR (dashed)
+PP_GRAY = "#6B6B6B"    # ATC (dotted)
+PP_GOLD = "#B8860B"    # profit
+PP_INK = "#1F2933"
+
+PP_COST_DEFAULTS = {"pp_FC": 60, "pp_mc0": 5, "pp_mc1": 4.0, "pp_mc2": 0.8}
+PP_PRESETS = {
+    "Situation 1 (default values)": {"pp_P": 75, "pp_a": 250, "pp_b": 25, "pp_dial": 25},
+    "Situation 2 (demand shifts up: intercept 350)": {"pp_P": 75, "pp_a": 350, "pp_b": 25, "pp_dial": 25},
+    "Situation 3 (flatter demand: intercept 145, slope 3)": {"pp_P": 75, "pp_a": 145, "pp_b": 3, "pp_dial": 25},
+}
+for _v in PP_PRESETS.values():
+    _v.update(PP_COST_DEFAULTS)
+
+
+def pp_costs(FC, mc0, mc1, mc2, qmax=PP_QMAX):
+    Q = np.arange(0, qmax + 1)
+    MC = np.where(Q == 0, np.nan, mc0 + mc1 * Q + mc2 * Q**2)
+    TC = FC + np.concatenate([[0.0], np.cumsum(MC[1:])])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ATC = np.where(Q == 0, np.nan, TC / Q)
+    return Q, MC, TC, ATC
+
+
+def pp_demand_prices(a, b, qmax=PP_QMAX):
+    """Linear demand P = a - bQ, floored at $0."""
+    Q = np.arange(0, qmax + 1)
+    return np.maximum(0.0, a - b * Q).astype(float)
+
+
+def pp_schedule(prices, costs):
+    """Full table for a given price schedule (index 0 = Q of 0)."""
+    Q, MC, TC, ATC = costs
+    P = np.asarray(prices, dtype=float)
+    TR = P * Q
+    MR = np.concatenate([[np.nan], np.diff(TR)])
+    # MR split into: price of the new unit  -  price cut on all earlier units
+    cut = np.concatenate([[np.nan], (P[:-1] - P[1:]) * Q[:-1]])
+    return pd.DataFrame({
+        "Q": Q, "P": P, "TR": TR, "MR": MR, "PriceCut": cut,
+        "MC": MC, "TC": TC, "ATC": ATC, "Profit": TR - TC, "Gap": P - MC,
+    })
+
+
+def pp_best_q(df):
+    """Profit-maximizing Q (ties -> the larger Q, i.e. make the unit when MR = MC)."""
+    best = df["Profit"].max()
+    return int(df.loc[np.isclose(df["Profit"], best), "Q"].max())
+
+
+def pp_competitive_q(df):
+    """Market outcome where demand meets MC: keep going while P >= MC."""
+    q = 0
+    for _, r in df.iloc[1:].iterrows():
+        if r["P"] >= r["MC"]:
+            q = int(r["Q"])
+        else:
+            break
+    return q
+
+
+def pp_dwl(df, q_mono, q_comp):
+    lost = df[(df["Q"] > q_mono) & (df["Q"] <= q_comp)]
+    return float(lost["Gap"].sum())
+
+
+def pp_dial_demand(P, b, q_anchor):
+    """Demand that passes through the price-taker outcome (q_anchor, P) with slope b."""
+    return P + b * q_anchor, b
+
+
+def pp_dial_max(P, q_anchor, qmax=PP_QMAX):
+    """Steepest slope that keeps demand at or above $0 through Q = qmax."""
+    if q_anchor >= qmax:
+        return 60
+    return max(1, int(P // (qmax - q_anchor)))
+
+
+def pp_outcomes(costs, P, a, b):
+    """Every number the problem set asks for, from the same functions the page uses."""
+    pt = pp_schedule(np.full(PP_QMAX + 1, float(P)), costs)
+    dm = pp_schedule(pp_demand_prices(a, b), costs)
+    qpt, qm, qc = pp_best_q(pt), pp_best_q(dm), pp_competitive_q(dm)
+    row = lambda d, q: d.loc[d["Q"] == q].iloc[0]
+    return {
+        "pt": (qpt, float(P), row(pt, qpt)["TR"], row(pt, qpt)["Profit"]),
+        "comp": (qc, row(dm, qc)["P"], row(dm, qc)["TR"], row(dm, qc)["Profit"]),
+        "mono": (qm, row(dm, qm)["P"], row(dm, qm)["TR"], row(dm, qm)["Profit"]),
+        "dwl": pp_dwl(dm, qm, qc),
+    }
+
+
+# ---------------- chart builders (pure: return a plotly Figure) ----------------
+def _pp_money(v):
+    return "—" if pd.isna(v) else f"${v:,.2f}"
+
+
+def _pp_unit_hover(label):
+    return f"Unit %{{x}}<br>{label} = $%{{y:,.2f}}<extra></extra>"
+
+
+def _pp_axes(fig, rows, per_unit_row, top):
+    for r in rows:
+        fig.update_xaxes(range=[-0.4, PP_QMAX + 0.4], dtick=1, showgrid=True,
+                         gridcolor="#ECEFF3", row=r, col=1)
+        fig.update_yaxes(showgrid=True, gridcolor="#ECEFF3", zeroline=True,
+                         zerolinecolor="#B8C0CC", tickprefix="$", separatethousands=True,
+                         row=r, col=1)
+    if per_unit_row:
+        fig.update_yaxes(range=[-130, top], row=per_unit_row, col=1)
+    fig.update_xaxes(title_text="Quantity (Q)", row=rows[-1], col=1)
+
+
+def _pp_line(fig, x, y, name, color, dash=None, row=None, hover=None, width=2.5, group=None):
+    fig.add_trace(go.Scatter(
+        x=x, y=y, mode="lines+markers", name=name, legendgroup=group or name,
+        line=dict(color=color, width=width, dash=dash), marker=dict(size=8, color=color),
+        hovertemplate=hover or _pp_unit_hover(name), connectgaps=False,
+    ), row=row, col=1 if row else None)
+
+
+def _pp_guide(fig, q, rows, color=PP_INK, text=None):
+    for r in rows:
+        fig.add_vline(x=q, line=dict(color=color, width=1.5, dash="dash"), row=r, col=1)
+    if text:
+        fig.add_annotation(x=q, y=1.0, yref="paper", text=text, showarrow=False,
+                           xanchor="left", xshift=6, yanchor="top",
+                           font=dict(color=color, size=13), bgcolor="rgba(255,255,255,0.85)")
+
+
+def pp_firm_figure(df, kind, show_guide, demand_label="Demand (P)"):
+    """Stacked totals / profit / per-unit view for one firm. kind = 'taker' or 'maker'."""
+    q_star = pp_best_q(df)
+    r = df.loc[df["Q"] == q_star].iloc[0]
+    fig = make_subplots(
+        rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
+        row_heights=[0.36, 0.20, 0.44],
+        subplot_titles=("Totals: TR and TC (Profit is the gap)",
+                        "Profit at each quantity (TR − TC)",
+                        "Per unit: price, MR, MC, ATC"),
+    )
+    Q = df["Q"]
+    # Row 1: totals
+    _pp_line(fig, Q, df["TR"], "Total Revenue (TR)", PP_BLUE, row=1,
+             hover="Q = %{x}<br>TR = $%{y:,.2f}<extra></extra>")
+    _pp_line(fig, Q, df["TC"], "Total Cost (TC)", PP_ORANGE, row=1,
+             hover="Q = %{x}<br>TC = $%{y:,.2f}<extra></extra>")
+    # Row 2: profit bars
+    bar_colors = [PP_GOLD if (show_guide and q == q_star) else "rgba(184,134,11,0.45)" for q in Q]
+    fig.add_trace(go.Bar(x=Q, y=df["Profit"], name="Profit", marker_color=bar_colors,
+                         hovertemplate="Q = %{x}<br>Profit = $%{y:,.2f}<extra></extra>"), row=2, col=1)
+    # Row 3: per unit
+    units = df.iloc[1:]
+    if kind == "taker":
+        _pp_line(fig, units["Q"], units["P"], f"P = MR = d (${units['P'].iloc[0]:,.0f})", PP_BLUE, row=3,
+                 hover="Unit %{x}<br>P = MR = $%{y:,.2f}<extra></extra>")
+    else:
+        _pp_line(fig, units["Q"], units["P"], demand_label, PP_BLUE, row=3,
+                 hover="Q = %{x}<br>Price = $%{y:,.2f}<extra></extra>")
+        _pp_line(fig, units["Q"], units["MR"], "Marginal Revenue (MR)", PP_PURPLE, dash="dash", row=3)
+    _pp_line(fig, units["Q"], units["MC"], "Marginal Cost (MC)", PP_ORANGE, row=3)
+    _pp_line(fig, units["Q"], units["ATC"], "Average Total Cost (ATC)", PP_GRAY, dash="dot", row=3,
+             width=2, hover="Q = %{x}<br>ATC = $%{y:,.2f}<extra></extra>")
+
+    if show_guide and q_star > 0:
+        _pp_guide(fig, q_star, [1, 2, 3], text=f"Q* = {q_star}")
+        # profit rectangle (P* - ATC*) x Q*
+        y0, y1 = float(r["ATC"]), float(r["P"])
+        fig.add_shape(type="rect", x0=0, x1=q_star, y0=min(y0, y1), y1=max(y0, y1),
+                      fillcolor="rgba(184,134,11,0.30)", line=dict(color=PP_GOLD, width=1.5), layer="below", row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=[q_star], y=[r["P"]], mode="markers", name=f"P* = {_pp_money(r['P'])}",
+            marker=dict(size=13, color=PP_BLUE, line=dict(color="white", width=2)),
+            hovertemplate=f"Q* = {q_star}<br>P* = {_pp_money(r['P'])}<br>ATC = {_pp_money(r['ATC'])}"
+                          f"<br>Profit = {_pp_money(r['Profit'])}<extra></extra>"), row=3, col=1)
+    elif show_guide:
+        fig.add_annotation(x=0, y=1.0, yref="paper", text="Q* = 0 (shut down)", showarrow=False,
+                           xanchor="left", font=dict(color=PP_INK, size=13))
+
+    top = max(370.0, float(np.nanmax(df["P"])) + 20)
+    tot_top = max(1300.0, float(np.nanmax(df["TR"])) * 1.05)
+    _pp_axes(fig, [1, 2, 3], 3, top)
+    fig.update_yaxes(range=[0, tot_top], row=1, col=1)
+    fig.update_layout(
+        template="simple_white", height=900, bargap=0.35, hovermode="closest",
+        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="left", x=0),
+        margin=dict(t=110, b=50, l=70, r=20), font=dict(size=13),
+    )
+    return fig
+
+
+def pp_mr_split_figure(df):
+    """Why MR < P: each extra unit = (price of the new unit) - (price cut on the earlier units)."""
+    u = df.iloc[1:]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=u["Q"], y=u["P"], name="Price of the new unit", marker_color=PP_BLUE,
+                         hovertemplate="Unit %{x}<br>Sells for $%{y:,.2f}<extra></extra>"))
+    fig.add_trace(go.Bar(x=u["Q"], y=-u["PriceCut"], name="Price cut on all the earlier units",
+                         marker_color=PP_PURPLE, opacity=0.75,
+                         customdata=np.stack([u["Q"] - 1, u["PriceCut"]], axis=-1),
+                         hovertemplate="Unit %{x}<br>Give up $%{customdata[1]:,.2f} "
+                                       "on the first %{customdata[0]} units<extra></extra>"))
+    fig.add_trace(go.Scatter(x=u["Q"], y=u["MR"], mode="markers", name="MR (what's left)",
+                             marker=dict(symbol="diamond", size=12, color=PP_INK,
+                                         line=dict(color="white", width=1.5)),
+                             hovertemplate="Unit %{x}<br>MR = $%{y:,.2f}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=u["Q"], y=u["MC"], mode="lines+markers", name="Marginal Cost (MC)",
+                             line=dict(color=PP_ORANGE, width=2.5), marker=dict(size=8),
+                             hovertemplate=_pp_unit_hover("MC")))
+    fig.update_layout(
+        template="simple_white", barmode="relative", height=430, bargap=0.3,
+        title="Why MR is less than Price: to sell one more, you cut the price on every unit",
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
+        margin=dict(t=90, b=50, l=70, r=20), font=dict(size=13),
+    )
+    fig.update_xaxes(title_text="Unit number", dtick=1, range=[0.4, PP_QMAX + 0.6])
+    fig.update_yaxes(tickprefix="$", zeroline=True, zerolinecolor="#8A94A3", gridcolor="#ECEFF3",
+                     showgrid=True)
+    return fig
+
+
+def pp_compare_figure(df, show_guide, show_dwl, title):
+    """Same market demand: competitive outcome (D = MC) vs monopoly (MR = MC)."""
+    qm, qc = pp_best_q(df), pp_competitive_q(df)
+    u = df.iloc[1:]
+    fig = make_subplots(rows=1, cols=1)
+    _pp_line(fig, u["Q"], u["P"], "Demand (P)", PP_BLUE, row=1,
+             hover="Q = %{x}<br>Price = $%{y:,.2f}<extra></extra>")
+    _pp_line(fig, u["Q"], u["MR"], "Marginal Revenue (MR)", PP_PURPLE, dash="dash", row=1)
+    _pp_line(fig, u["Q"], u["MC"], "Marginal Cost (MC)", PP_ORANGE, row=1)
+    if show_dwl and qc > qm:
+        lost = df[(df["Q"] > qm) & (df["Q"] <= qc)]
+        for _, r in lost.iterrows():
+            fig.add_shape(type="rect", x0=r["Q"] - 0.5, x1=r["Q"] + 0.5, y0=r["MC"], y1=r["P"],
+                          fillcolor="rgba(155,89,182,0.35)", line=dict(color="rgba(155,89,182,0.7)", width=1),
+                          layer="below")
+        fig.add_trace(go.Scatter(  # legend entry only
+            x=[None], y=[None], mode="markers", name=f"Deadweight loss = {_pp_money(pp_dwl(df, qm, qc))}",
+            marker=dict(size=14, color="rgba(155,89,182,0.35)", symbol="square")))
+        fig.add_trace(go.Scatter(  # invisible hover targets in the middle of each lost unit
+            x=lost["Q"], y=(lost["P"] + lost["MC"]) / 2, mode="markers", showlegend=False,
+            marker=dict(size=30, color="rgba(0,0,0,0)", symbol="square"),
+            customdata=lost["Gap"],
+            hovertemplate="Unit %{x} is not made<br>Lost value (P − MC) = $%{customdata:,.2f}<extra></extra>"))
+    if show_guide:
+        rc, rm = df.loc[df["Q"] == qc].iloc[0], df.loc[df["Q"] == qm].iloc[0]
+        for q, r, c, lab in [(qc, rc, PP_BLUE, "Competitive"), (qm, rm, PP_PURPLE, "Monopoly")]:
+            if q == 0:
+                continue
+            fig.add_vline(x=q, line=dict(color=c, width=1.5, dash="dash"))
+            fig.add_trace(go.Scatter(
+                x=[q], y=[r["P"]], mode="markers", name=f"{lab}: Q = {q}, P = {_pp_money(r['P'])}",
+                marker=dict(size=14, color=c, line=dict(color="white", width=2)),
+                hovertemplate=f"{lab}<br>Q = {q}<br>P = {_pp_money(r['P'])}<extra></extra>"))
+    top = max(370.0, float(np.nanmax(df["P"])) + 20)
+    fig.update_layout(
+        template="simple_white", height=580, hovermode="closest",
+        title=dict(text=title, y=0.98, yanchor="top"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(t=140, b=50, l=70, r=20), font=dict(size=13),
+    )
+    _pp_axes(fig, [1], 1, top)
+    fig.update_xaxes(range=[0.4, PP_QMAX + 0.6])
+    return fig
+
+
+def _pp_table(df, cols, highlight=None, lost=None):
+    names = {"Q": "Q", "P": "Price (P)", "TR": "Total Revenue (TR)", "MR": "Marginal Revenue (MR)",
+             "MC": "Marginal Cost (MC)", "TC": "Total Cost (TC)", "ATC": "Avg Total Cost (ATC)",
+             "Profit": "Profit (TR − TC)", "Gap": "P − MC"}
+    out = df[cols].rename(columns=names)
+
+    def paint(row):
+        q = row["Q"]
+        if highlight is not None and q == highlight:
+            return ["background-color: #FCE58B"] * len(row)
+        if lost is not None and lost[0] < q <= lost[1]:
+            return ["background-color: #EBDDF2"] * len(row)
+        return [""] * len(row)
+
+    money = {names[c]: _pp_money for c in cols if c != "Q"}
+    return out.style.apply(paint, axis=1).format(money).hide(axis="index")
+
+
+# ---------------- the page ----------------
+def _pp_apply_preset():
+    choice = st.session_state.get("pp_situation")
+    if choice in PP_PRESETS:
+        for k, v in PP_PRESETS[choice].items():
+            st.session_state[k] = v
+
+
+def _pp_mark_custom():
+    st.session_state["pp_situation"] = "Custom"
+
+
+def _pp_instructor_view(costs):
+    with st.expander("🔒 Instructor view (answer key)"):
+        try:
+            code = st.secrets.get("INSTRUCTOR_PASSCODE", None)
+        except Exception:
+            code = None
+        if not code:
+            st.caption("To turn this on, add INSTRUCTOR_PASSCODE to this app's Secrets in Streamlit Cloud.")
+            return
+        if st.text_input("Passcode", type="password", key="pp_passcode") != code:
+            return
+        rows = []
+        for name, v in PP_PRESETS.items():
+            o = pp_outcomes(pp_costs(v["pp_FC"], v["pp_mc0"], v["pp_mc1"], v["pp_mc2"]),
+                            v["pp_P"], v["pp_a"], v["pp_b"])
+            rows.append({"Situation": name,
+                         "Price-taker Q / TR / Profit": f"{o['pt'][0]} / {_pp_money(o['pt'][2])} / {_pp_money(o['pt'][3])}",
+                         "Competitive Q / P": f"{o['comp'][0]} / {_pp_money(o['comp'][1])}",
+                         "Competitive TR / Profit": f"{_pp_money(o['comp'][2])} / {_pp_money(o['comp'][3])}",
+                         "Monopoly Q / P": f"{o['mono'][0]} / {_pp_money(o['mono'][1])}",
+                         "Monopoly TR / Profit": f"{_pp_money(o['mono'][2])} / {_pp_money(o['mono'][3])}",
+                         "Deadweight loss": _pp_money(o["dwl"])})
+        st.markdown("**Presets**")
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+        P = st.session_state["pp_P"]
+        q_anchor = pp_best_q(pp_schedule(np.full(PP_QMAX + 1, float(P)), costs))
+        dial_rows = []
+        for b in range(0, pp_dial_max(P, q_anchor) + 1):
+            a, _ = pp_dial_demand(P, b, q_anchor)
+            o = pp_outcomes(costs, P, a, b)
+            dial_rows.append({"Dial": b, "Demand": f"P = {a:g} − {b}Q",
+                              "Monopoly Q": o["mono"][0], "Monopoly P": _pp_money(o["mono"][1]),
+                              "Monopoly profit": _pp_money(o["mono"][3]), "Deadweight loss": _pp_money(o["dwl"])})
+        st.markdown(f"**Pricing power dial** (current costs, anchored at Q = {q_anchor}, P = ${P})")
+        st.dataframe(pd.DataFrame(dial_rows), hide_index=True, use_container_width=True)
+
+
+def page_market_power_cost_revenue_builder():
+    for k, v in PP_PRESETS["Situation 1 (default values)"].items():
+        st.session_state.setdefault(k, v)
+    st.session_state.setdefault("pp_situation", "Situation 1 (default values)")
 
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-    st.markdown("## 🏛️ Market Power Builder: TC, MC, TR, MR, Profit")
-    st.write("Build curves with sliders. We compute **TC, MC, TR, MR, Profit** for **price-taking** and **price-making**, and draw **4 graphs**.")
+    st.markdown("## 🏛️ Marginal Revenue – Pricing Power Builder")
+    st.write("Same firm, same costs. In **① Price-Taker** the market sets the price. In **② Price-Maker** "
+             "the firm faces the whole demand curve, so selling one more unit means cutting the price. "
+             "**③ Compare** puts both outcomes on one market, and **④ Pricing Power Dial** turns pricing power up and down.")
 
-    # -------- sliders (kept compact) --------
-    a,b,c = st.columns(3)
-    with a:
-        FC  = st.slider("Fixed Cost (FC)", 0, 300, 60, 5)
-        mc0 = st.slider("MC base", 0, 80, 5, 1)
-        mc1 = st.slider("MC slope", 0.0, 20.0, 4.0, 0.5)
-        mc2 = st.slider("MC curvature", 0.0, 5.0, 0.8, 0.1)
-    with b:
-        P = st.slider("Price-taker market price (P = MR)", 5, 150, 75, 1)
-    with c:
-        Pmax  = st.slider("Demand intercept (P at Q=0)", 50, 350, 250, 5)
-        slope = st.slider("Demand slope (ΔP per +1 Q)", 1, 60, 25, 1)
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.selectbox("Situation (sets the sliders for the problem set)", ["Custom"] + list(PP_PRESETS),
+                     key="pp_situation", on_change=_pp_apply_preset)
+    with c2:
+        st.write("")
+        show_guide = st.toggle("✅ Check my answer (show Q*, P*, and profit)", key="pp_guide", value=False)
 
-    Q = np.arange(1, 11)
+    with st.expander("⚙️ Cost settings (same firm in every tab)"):
+        k1, k2, k3, k4 = st.columns(4)
+        k1.slider("Fixed Cost (FC)", 0, 300, step=5, key="pp_FC", on_change=_pp_mark_custom)
+        k2.slider("MC of the 1st unit, base", 0, 80, step=1, key="pp_mc0", on_change=_pp_mark_custom)
+        k3.slider("MC slope", 0.0, 20.0, step=0.5, key="pp_mc1", on_change=_pp_mark_custom)
+        k4.slider("MC curvature", 0.0, 5.0, step=0.1, key="pp_mc2", on_change=_pp_mark_custom)
+    ss = st.session_state
+    costs = pp_costs(ss["pp_FC"], ss["pp_mc0"], ss["pp_mc1"], ss["pp_mc2"])
 
-    # -------- schedules --------
-    MC = mc0 + mc1*Q + mc2*(Q**2)
-    TC = FC + np.cumsum(MC)
-    TRc, PROFc = P*Q, P*Q - TC                       # price-taker
-    Pd = np.maximum(0, Pmax - slope*Q)               # demand price schedule
-    TRm, MRm = Pd*Q, (Pmax - 2*slope*Q)              # price-maker (linear demand MR)
-    PROFm = TRm - TC
+    match = [n for n, v in PP_PRESETS.items()
+             if all(np.isclose(ss[k], v[k]) for k in v if k != "pp_dial")]
+    st.caption(f"Settings match **{match[0].split(' (')[0]}**." if match
+               else "Custom settings (you've moved a slider away from the Situations).")
 
-    # -------- table --------
-    #st.divider(); st.markdown("### 🧾 Table")
-    #df = pd.DataFrame({
-    #    "Q": Q,
-    #    "Total Cost (TC)": TC.round().astype(int),
-    #    "Marginal Cost (MC)": MC.round().astype(int),
-    #    "Price-Taking TR": TRc.round().astype(int),
-    #    "Price-Taking Profit": PROFc.round().astype(int),
-    #    "Price-Maker Price (Demand P)": Pd.round().astype(int),
-    #    "Total Price-Maker Revenue (TR)": TRm.round().astype(int),
-    #    "Marginal Revenue (MR)": MRm.round().astype(int),
-    #    "Price-Making Profit": PROFm.round().astype(int),
-    #})
-    #st.dataframe(df, use_container_width=True)
-    #try: export_csv_button("📥 Download Table CSV", df, "market_power_table")
-    #except Exception: pass
+    t1, t2, t3, t4 = st.tabs(["① Price-Taker", "② Price-Maker", "③ Compare", "④ Pricing Power Dial"])
+    col_firm = ["Q", "P", "TR", "MR", "MC", "TC", "ATC", "Profit"]
 
-    # -------- plot helper (currency + whole numbers in hover) --------
-    def add_line(fig, x, y, name, color, yfmt="$%{y:,.0f}", extra=None):
-        ht = f"Q=%{{x:d}}<br>{name}={yfmt}<extra></extra>"
-        if extra: ht = extra
-        fig.add_trace(go.Scatter(
-            x=x, y=y, mode="lines+markers", name=name, line=dict(color=color),
-            hovertemplate=ht
-        ))
+    # ---- ① Price-taker ----
+    with t1:
+        st.slider("Market price (the firm takes it: P = MR)", 5, 150, step=1, key="pp_P", on_change=_pp_mark_custom)
+        P = ss["pp_P"]
+        pt = pp_schedule(np.full(PP_QMAX + 1, float(P)), costs)
+        st.plotly_chart(pp_firm_figure(pt, "taker", show_guide), use_container_width=True)
+        st.caption("Marginal values sit at the unit they belong to: the point at Q = 6 is the 6th unit. "
+                   "Keep making units while MR ≥ MC.")
+        st.dataframe(_pp_table(pt, col_firm, highlight=pp_best_q(pt) if show_guide else None),
+                     use_container_width=True, hide_index=True)
 
-    def layout(fig, title, ytitle):
-        fig.update_layout(
-            title=title, template="simple_white",
-            xaxis_title="Quantity (Q)", yaxis_title=ytitle,
-            xaxis=dict(dtick=1),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="left", x=0),
-            margin=dict(t=60, b=80, l=50, r=20),
-        )
+    # ---- ② Price-maker ----
+    with t2:
+        d1, d2 = st.columns(2)
+        d1.slider("Demand intercept (P at Q = 0)", 50, 350, step=5, key="pp_a", on_change=_pp_mark_custom)
+        d2.slider("Demand slope (price drop per +1 Q)", 1, 60, step=1, key="pp_b", on_change=_pp_mark_custom)
+        a, b = ss["pp_a"], ss["pp_b"]
+        dm = pp_schedule(pp_demand_prices(a, b), costs)
+        st.caption(f"Demand: P = {a} − {b}Q" + (" (floored at $0)" if a - b * PP_QMAX < 0 else ""))
+        st.plotly_chart(pp_firm_figure(dm, "maker", show_guide), use_container_width=True)
+        st.caption("MR = the change in TR from one more unit. Profit peaks (top two panels) at the same Q "
+                   "where MR stops being ≥ MC (bottom panel). Then go UP to demand for the price.")
+        st.dataframe(_pp_table(dm, col_firm, highlight=pp_best_q(dm) if show_guide else None),
+                     use_container_width=True, hide_index=True)
+        st.plotly_chart(pp_mr_split_figure(dm), use_container_width=True)
+        st.caption("Each blue bar is what the new unit sells for. Each purple bar is what you give up by "
+                   "lowering the price on every unit you were already selling. The diamond is MR.")
 
-    st.divider(); st.markdown("### 📊 Graphs (1a, 1b, 2a, 2b)")
-    g1,g2 = st.columns(2); g3,g4 = st.columns(2)
+    # ---- ③ Compare ----
+    with t3:
+        st.write(f"Same market demand as ② (P = {a} − {b}Q). **Perfect competition** produces where "
+                 "demand meets MC (P ≥ MC). **Monopoly** produces where MR = MC and charges what demand will bear.")
+        show_dwl = st.toggle("Show deadweight loss", key="pp_dwl", value=False)
+        st.plotly_chart(pp_compare_figure(dm, show_guide, show_dwl, "Competition vs. monopoly in the same market"),
+                        use_container_width=True)
+        qm, qc = pp_best_q(dm), pp_competitive_q(dm)
+        st.dataframe(_pp_table(dm, ["Q", "P", "MR", "MC", "Gap", "TR", "TC", "Profit"],
+                               lost=(qm, qc) if show_dwl else None),
+                     use_container_width=True, hide_index=True)
+        if show_guide:
+            o = pp_outcomes(costs, P, a, b)
+            st.dataframe(pd.DataFrame({
+                "": ["Perfect competition (P = MC)", "Monopoly (MR = MC)"],
+                "Q": [o["comp"][0], o["mono"][0]],
+                "Price": [_pp_money(o["comp"][1]), _pp_money(o["mono"][1])],
+                "TR": [_pp_money(o["comp"][2]), _pp_money(o["mono"][2])],
+                "Profit": [_pp_money(o["comp"][3]), _pp_money(o["mono"][3])],
+            }), hide_index=True, use_container_width=True)
+            st.caption(f"Deadweight loss = {_pp_money(o['dwl'])}: the P − MC on each unit the monopolist doesn't make.")
 
-    with g1:
-        f = go.Figure()
-        add_line(f, Q, TC, "Total Cost", OR)
-        add_line(f, Q, TRc, "Total Revenue", GR)
-        add_line(f, Q, PROFc, "Price-Taking Profit", GD, yfmt="$%{y:,.0f}")
-        layout(f, f"(1a) ${P} Price-Taking Profit = Total Revenue - Total Cost", "$")
-        st.plotly_chart(f, use_container_width=True)
+    # ---- ④ Pricing power dial ----
+    with t4:
+        q_anchor = pp_best_q(pt)
+        if q_anchor == 0:
+            st.warning("At this market price the price-taker shuts down (Q* = 0), so there's no outcome to "
+                       "pivot around. Raise the market price in ① to use the dial.")
+        else:
+            dmax = pp_dial_max(P, q_anchor)
+            ss["pp_dial"] = int(min(ss.get("pp_dial", 0), dmax))
+            st.slider("Pricing power (how steep demand is; 0 = price-taker)", 0, dmax, step=1, key="pp_dial")
+            ad, bd = pp_dial_demand(P, ss["pp_dial"], q_anchor)
+            dd = pp_schedule(pp_demand_prices(ad, bd), costs)
+            st.caption(f"Demand: P = {ad:g} − {bd}Q. It always passes through the price-taker outcome "
+                       f"from ① (Q = {q_anchor}, P = ${P}), so the competitive outcome stays put while the "
+                       "firm's pricing power changes.")
+            st.plotly_chart(pp_compare_figure(dd, show_guide, True, "Turn up pricing power: watch MR peel away from demand"),
+                            use_container_width=True)
+            qmd, qcd = pp_best_q(dd), pp_competitive_q(dd)
+            st.dataframe(_pp_table(dd, ["Q", "P", "MR", "MC", "Gap", "TR", "TC", "Profit"],
+                                   highlight=qmd if show_guide else None, lost=(qmd, qcd)),
+                         use_container_width=True, hide_index=True)
 
-    with g2:
-        f = go.Figure()
-        add_line(f, Q, np.full_like(Q, float(P)), f"Marginal Revenue taking price of ${P}", BL, yfmt="$%{y:,.0f}")
-        add_line(f, Q, MC, "Marginal Cost", OR, yfmt="$%{y:,.0f}")
-        layout(f, "(1b) Price-Taking Supply and Demand", "$ per unit")
-        st.plotly_chart(f, use_container_width=True)
-
-    with g3:
-        f = go.Figure()
-        add_line(f, Q, TC, "Total Cost", OR)
-        add_line(f, Q, TRm, "Total Price-Maker Revenue", GR)
-        add_line(f, Q, PROFm, "Price-Making Profit", GD, yfmt="$%{y:,.0f}")
-        layout(f, "(2a) Price-Making Profit = Total Revenue - Total Cost", "$")
-        st.plotly_chart(f, use_container_width=True)
-
-    with g4:
-        f = go.Figure()
-        add_line(f, Q, Pd, "Quantity Demanded (Demand)", BL, yfmt="$%{y:,.0f}")
-        add_line(f, Q, MC, "Marginal Cost", OR, yfmt="$%{y:,.0f}")
-        add_line(f, Q, MRm, "Marginal Revenue", GR, yfmt="$%{y:,.0f}")
-        layout(f, "(2b) Price-Making Supply and Demand", "$ per unit")
-        st.plotly_chart(f, use_container_width=True)
-
-    # -------- key outputs (optional, compact) --------
-    st.divider(); st.markdown("### ✅ Key quantities (for questions)")
-    q_pt = int(Q[MC <= P].max()) if (MC <= P).any() else 0
-    q_pm = int(Q[(MRm >= MC)].max()) if (MRm >= MC).any() else 0
-    cL, cR = st.columns(2)
-    cL.metric("Perfect Competition: Q* (last unit with MC ≤ P)", q_pt)
-    cR.metric("Price-Maker: Q* (last unit with MR ≥ MC)", q_pm)
-
+    _pp_instructor_view(costs)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
